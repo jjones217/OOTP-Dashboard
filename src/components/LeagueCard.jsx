@@ -1,0 +1,170 @@
+import { useState } from 'react';
+import { useLeagueData } from '../hooks/useLeagueData';
+
+const STAT_LABELS = {
+  batting: 'Batting',
+  pitching: 'Pitching',
+};
+
+// Stats worth showing if present, in display order.
+const BATTING_KEYS = ['g', 'ab', 'r', 'h', 'hr', 'rbi', 'sb', 'avg', 'obp', 'slg', 'ops'];
+const PITCHING_KEYS = ['g', 'w', 'l', 'sv', 'ip', 'ha', 'er', 'bb', 'k', 'era', 'whip'];
+
+function pickStats(row, preferredKeys) {
+  if (!row) return [];
+  const lower = {};
+  for (const [k, v] of Object.entries(row)) lower[k.toLowerCase()] = v;
+  const picked = preferredKeys
+    .filter((k) => lower[k] !== undefined)
+    .map((k) => [k.toUpperCase(), lower[k]]);
+  if (picked.length > 0) return picked;
+  // Fallback: show whatever numeric-looking fields exist.
+  return Object.entries(row)
+    .filter(([, v]) => v !== '' && !Number.isNaN(Number(v)))
+    .slice(0, 12)
+    .map(([k, v]) => [k.toUpperCase(), v]);
+}
+
+function ExportBadge({ exportStatus }) {
+  if (!exportStatus) {
+    return (
+      <span className="inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+        Export: unknown
+      </span>
+    );
+  }
+  const { exported } = exportStatus;
+  const looksExported =
+    exported !== undefined &&
+    exported !== '0' &&
+    exported !== 0 &&
+    exported !== false &&
+    exported !== 'no';
+  return looksExported ? (
+    <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700 dark:bg-green-900/50 dark:text-green-300">
+      Exported{typeof exported === 'string' && exported.length > 3 ? `: ${exported}` : ''}
+    </span>
+  ) : (
+    <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-700 dark:bg-red-900/50 dark:text-red-300">
+      Not exported
+    </span>
+  );
+}
+
+export default function LeagueCard({ id, league, onEdit, onRemove }) {
+  const { data, loading, error, updatedAt, refresh } = useLeagueData(league);
+  const [statView, setStatView] = useState('batting');
+
+  const statRow = data?.[statView];
+  const stats = pickStats(statRow, statView === 'batting' ? BATTING_KEYS : PITCHING_KEYS);
+
+  return (
+    <div className="flex flex-col rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+            {league.name}
+          </h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            statsplus.net/{league.lgurl}
+            {data?.teamName ? ` · ${data.teamName}` : ''}
+          </p>
+        </div>
+        <div className="flex shrink-0 gap-1">
+          <button
+            onClick={refresh}
+            title="Refresh now"
+            className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+          >
+            ↻
+          </button>
+          <button
+            onClick={() => onEdit(id)}
+            title="Edit league"
+            className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+          >
+            ✎
+          </button>
+          <button
+            onClick={() => onRemove(id)}
+            title="Remove league"
+            className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-400"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="mb-2 rounded-lg bg-red-50 p-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
+          {error}
+        </div>
+      )}
+
+      {loading && !data && (
+        <div className="py-6 text-center text-sm text-gray-400 dark:text-gray-500">
+          Loading league data…
+        </div>
+      )}
+
+      {data && (
+        <>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            {data.simDate && (
+              <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
+                Sim date: {data.simDate}
+              </span>
+            )}
+            <ExportBadge exportStatus={data.exportStatus} />
+            {data.record && (
+              <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-700 dark:text-gray-200">
+                {data.record}
+              </span>
+            )}
+          </div>
+
+          <div className="mt-auto">
+            <div className="mb-2 flex items-center justify-between">
+              <select
+                value={statView}
+                onChange={(e) => setStatView(e.target.value)}
+                className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+              >
+                {Object.entries(STAT_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              {updatedAt && (
+                <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                  Updated {updatedAt.toLocaleTimeString()}
+                </span>
+              )}
+            </div>
+
+            {stats.length > 0 ? (
+              <div className="grid grid-cols-4 gap-x-2 gap-y-1 rounded-lg bg-gray-50 p-2 text-center dark:bg-gray-900/40">
+                {stats.map(([label, value]) => (
+                  <div key={label}>
+                    <div className="text-[10px] uppercase text-gray-400 dark:text-gray-500">
+                      {label}
+                    </div>
+                    <div className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                      {value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400 dark:text-gray-500">
+                No {STAT_LABELS[statView].toLowerCase()} stats found for team{' '}
+                {league.teamId}.
+              </p>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
