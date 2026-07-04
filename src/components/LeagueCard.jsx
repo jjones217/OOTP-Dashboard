@@ -52,7 +52,7 @@ function ExportBadge({ exportStatus }) {
 }
 
 export default function LeagueCard({ id, league, onEdit, onRemove, onOpen }) {
-  const { data, loading, error, updatedAt, refresh } = useLeagueData(league);
+  const { data, hasCache, loading, error, pulledAt, pull } = useLeagueData(id, league);
   const [statView, setStatView] = useState('batting');
 
   const statRow = data?.[statView];
@@ -72,11 +72,12 @@ export default function LeagueCard({ id, league, onEdit, onRemove, onOpen }) {
         </div>
         <div className="flex shrink-0 gap-1">
           <button
-            onClick={refresh}
-            title="Refresh now"
-            className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+            onClick={pull}
+            disabled={loading}
+            title="Pull latest data from StatsPlus"
+            className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 disabled:opacity-50 dark:hover:bg-gray-700 dark:hover:text-gray-300"
           >
-            ↻
+            {loading ? '⏳' : '⬇'}
           </button>
           <button
             onClick={() => onEdit(id)}
@@ -101,9 +102,23 @@ export default function LeagueCard({ id, league, onEdit, onRemove, onOpen }) {
         </div>
       )}
 
-      {loading && !data && (
+      {!hasCache && !loading && !error && (
+        <div className="flex flex-col items-center gap-2 py-6 text-center">
+          <p className="text-sm text-gray-400 dark:text-gray-500">
+            No data pulled yet.
+          </p>
+          <button
+            onClick={pull}
+            className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+          >
+            ⬇ Pull data
+          </button>
+        </div>
+      )}
+
+      {!hasCache && loading && (
         <div className="py-6 text-center text-sm text-gray-400 dark:text-gray-500">
-          Loading league data…
+          Pulling data from StatsPlus…
         </div>
       )}
 
@@ -136,9 +151,9 @@ export default function LeagueCard({ id, league, onEdit, onRemove, onOpen }) {
                   </option>
                 ))}
               </select>
-              {updatedAt && (
+              {pulledAt && (
                 <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                  Updated {updatedAt.toLocaleTimeString()}
+                  Pulled {pulledAt.toLocaleTimeString()}
                 </span>
               )}
             </div>

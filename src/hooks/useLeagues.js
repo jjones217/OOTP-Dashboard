@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { loadLeagues, saveLeagues } from '../storage';
+import { clearCached } from '../lib/dataStore';
 
 function makeId() {
   return crypto.randomUUID
@@ -71,6 +72,7 @@ export function useLeagues() {
       const next = { ...leaguesRef.current };
       delete next[id];
       await persist(next);
+      await clearCached(id);
     },
     [persist]
   );

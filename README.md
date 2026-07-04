@@ -4,8 +4,14 @@ Personal GM dashboard for OOTP Online leagues hosted on
 [StatsPlus](https://statsplus.net). Shows sim date, export status, W-L
 record, and team batting/pitching stats for each of your leagues, plus a
 per-league view with player browsing, tool-rating radar charts, standings,
-and league-wide team stats. Data refreshes only when you ask (manual
-refresh buttons) — there is no background polling.
+and league-wide team stats.
+
+**Dataflow: pull, don't poll.** Nothing fetches automatically. Clicking a
+**⬇ Pull data** button is the only thing that talks to StatsPlus; that
+pull writes the result to a local cache, and every view in the app always
+renders from that cache — including right after an app restart, with zero
+network calls, showing whatever was last pulled. See
+[Data storage](#data-storage) for where the cache lives.
 
 Runs two ways from the same codebase:
 
@@ -23,16 +29,23 @@ Runs two ways from the same codebase:
 
 ## Data storage
 
-League configs are stored locally on each computer — no cloud database:
+Everything is stored locally on each computer — no cloud database, no
+server-side persistence:
 
-- **Desktop app**: a `leagues.json` file in the app's per-user data folder
+- **League configs** (name, StatsPlus URL, team ID): a `leagues.json` file
+  in the app's per-user data folder
   - Windows: `%APPDATA%\OOTP Dashboard\leagues.json`
   - macOS: `~/Library/Application Support/OOTP Dashboard/leagues.json`
-- **Web app / dev server**: browser localStorage
+- **Pulled StatsPlus data** (teams, players, stats, ratings): one JSON
+  file per league in that same folder's `data\` subdirectory (e.g.
+  `%APPDATA%\OOTP Dashboard\data\<league-id>.json`), holding the raw
+  response and a `fetchedAt` timestamp for each endpoint.
+- **Web app / dev server**: both of the above fall back to browser
+  localStorage.
 
-Each computer keeps its own league list, so a league added on one machine
-has to be added on the other too. The `leagues.json` file can be copied
-between machines to transfer the list.
+Each computer keeps its own leagues and pulled data — a league added (or
+data pulled) on one machine doesn't appear on another. Both JSON files can
+be copied between machines to transfer everything as of the last pull.
 
 ## StatsPlus API
 
@@ -51,7 +64,8 @@ Two things are special:
 - **`/ratings` is an async job** — StatsPlus generates the export in
   60-90 seconds. The desktop app starts the job, polls until it's done,
   and requires being signed in and linked to a team in the league. It's
-  triggered manually from the Players tab ("Load ratings").
+  triggered manually from the Players tab ("Pull ratings") and cached
+  like everything else, so it doesn't need to be re-run every session.
 
 StatsPlus rate-limits aggressively — all requests go through a queue that
 spaces them out, but repeated manual testing can still trigger a 429 that
@@ -106,5 +120,5 @@ The Vite dev server includes a middleware (in `vite.config.js`) that mimics
    green means the proxy reached the league's API.
 3. Enter your team ID — the modal links to the league's `/api/teams`
    endpoint so you can look it up.
-4. Add the API token if the league requires one, then save. The card
-   appears immediately and starts loading data.
+4. Save. The card appears with a **⬇ Pull data** button — click it to
+   fetch from StatsPlus for the first time.

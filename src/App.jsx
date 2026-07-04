@@ -51,7 +51,7 @@ export default function App() {
               ⚾ OOTP League Dashboard
             </h1>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Live data from StatsPlus · manual refresh
+              Data pulled from StatsPlus on request, cached on this computer
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -84,6 +84,7 @@ export default function App() {
       {openLeagueId && leagues[openLeagueId] && (
         <LeagueDetail
           key={openLeagueId}
+          id={openLeagueId}
           league={leagues[openLeagueId]}
           onBack={() => setOpenLeagueId(null)}
         />

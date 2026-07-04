@@ -176,18 +176,20 @@ function TeamStatsTable({ title, data, names, keys, myTeamId }) {
   );
 }
 
-export default function LeagueDetail({ league, onBack }) {
+export default function LeagueDetail({ id, league, onBack }) {
   const {
     data,
     errors,
     loading,
-    updatedAt,
-    refresh,
+    pulledAt,
+    pull,
     ratings,
     ratingsStatus,
     ratingsError,
-    loadRatings,
-  } = useLeagueDetail(league);
+    ratingsPulledAt,
+    pullRatings,
+  } = useLeagueDetail(id, league);
+  const hasCache = Object.keys(data).length > 0;
   const [tab, setTab] = useState('players');
   const [search, setSearch] = useState('');
   const [teamFilter, setTeamFilter] = useState(String(league.teamId ?? 'all'));
@@ -242,21 +244,38 @@ export default function LeagueDetail({ league, onBack }) {
           </h2>
         </div>
         <div className="flex items-center gap-3">
-          {updatedAt && (
+          {pulledAt && (
             <span className="text-xs text-gray-400 dark:text-gray-500">
-              Updated {updatedAt.toLocaleTimeString()}
+              Last pulled {pulledAt.toLocaleTimeString()}
             </span>
           )}
           <button
-            onClick={refresh}
+            onClick={pull}
             disabled={loading}
+            title="Fetch the latest data from StatsPlus and cache it on this computer"
             className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
-            {loading ? 'Refreshing…' : '↻ Refresh'}
+            {loading ? 'Pulling…' : '⬇ Pull latest data'}
           </button>
         </div>
       </div>
 
+      {!hasCache && !loading && (
+        <div className="mb-4 flex flex-col items-center gap-2 rounded-xl border border-dashed border-gray-300 py-10 text-center dark:border-gray-600">
+          <p className="text-sm text-gray-400 dark:text-gray-500">
+            No data pulled for this league yet.
+          </p>
+          <button
+            onClick={pull}
+            className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+          >
+            ⬇ Pull data
+          </button>
+        </div>
+      )}
+
+      {(hasCache || loading) && (
+      <>
       <div className="mb-4 flex gap-1 border-b border-gray-200 dark:border-gray-700">
         {[
           ['players', 'Players'],
@@ -312,14 +331,14 @@ export default function LeagueDetail({ league, onBack }) {
               {filtered.length} players
             </span>
 
-            <span className="ml-auto">
+            <span className="ml-auto flex items-center gap-2">
               {ratingsStatus === 'idle' && (
                 <button
-                  onClick={loadRatings}
+                  onClick={pullRatings}
                   className="rounded-md border border-blue-300 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-400 dark:hover:bg-blue-900/20"
                   title="StatsPlus generates the ratings export on their side; it takes about 60-90 seconds"
                 >
-                  Load ratings (~90s)
+                  ⬇ Pull ratings (~90s)
                 </button>
               )}
               {ratingsStatus === 'running' && (
@@ -328,13 +347,22 @@ export default function LeagueDetail({ league, onBack }) {
                 </span>
               )}
               {ratingsStatus === 'done' && (
-                <span className="text-sm text-green-600 dark:text-green-400">
-                  ✓ Ratings loaded
-                </span>
+                <>
+                  <span className="text-sm text-green-600 dark:text-green-400">
+                    ✓ Ratings pulled{ratingsPulledAt ? ` ${ratingsPulledAt.toLocaleTimeString()}` : ''}
+                  </span>
+                  <button
+                    onClick={pullRatings}
+                    title="Pull a fresh ratings export"
+                    className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+                  >
+                    ⬇
+                  </button>
+                </>
               )}
               {ratingsStatus === 'error' && (
                 <button
-                  onClick={loadRatings}
+                  onClick={pullRatings}
                   className="rounded-md border border-red-300 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
                   title={ratingsError || ''}
                 >
@@ -350,9 +378,9 @@ export default function LeagueDetail({ league, onBack }) {
             </div>
           )}
 
-          {players.length === 0 && !loading && (
+          {players.length === 0 && !loading && pulledAt && (
             <div className="mb-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
-              No player data found.
+              No player data found in the last pull.
               {Object.entries(errors).length > 0 && (
                 <span>
                   {' '}Endpoint errors:{' '}
@@ -410,7 +438,7 @@ export default function LeagueDetail({ league, onBack }) {
               allRatingRows={allRatingRows}
               teamName={selected ? names[String(selected.teamId)] : null}
               ratingsStatus={ratingsStatus}
-              onLoadRatings={loadRatings}
+              onLoadRatings={pullRatings}
             />
           </div>
         </>
@@ -434,6 +462,8 @@ export default function LeagueDetail({ league, onBack }) {
             myTeamId={league.teamId}
           />
         </div>
+      )}
+      </>
       )}
     </div>
   );

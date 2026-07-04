@@ -150,6 +150,46 @@ ipcMain.handle('statsplus-ratings', async (_event, { lgurl } = {}) => {
 // Support/OOTP Dashboard).
 const leaguesFile = () => path.join(app.getPath('userData'), 'leagues.json');
 
+// Pulled StatsPlus data is cached to disk, one file per league, in the
+// same per-user data folder's "data" subdirectory. The app always reads
+// from this file; the network is only touched when the user clicks a
+// "Pull data" button, which then overwrites the relevant entries here.
+const sanitizeId = (id) => String(id).replace(/[^a-zA-Z0-9_-]/g, '_');
+const dataFile = (leagueId) =>
+  path.join(app.getPath('userData'), 'data', `${sanitizeId(leagueId)}.json`);
+
+ipcMain.handle('data-load-all', async (_event, leagueId) => {
+  try {
+    return JSON.parse(await fs.readFile(dataFile(leagueId), 'utf8'));
+  } catch (err) {
+    if (err.code === 'ENOENT') return {};
+    throw err;
+  }
+});
+
+ipcMain.handle('data-save', async (_event, { leagueId, endpoint, data }) => {
+  const file = dataFile(leagueId);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  let all = {};
+  try {
+    all = JSON.parse(await fs.readFile(file, 'utf8'));
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+  }
+  all[endpoint] = { fetchedAt: Date.now(), data };
+  const tmp = `${file}.tmp`;
+  await fs.writeFile(tmp, JSON.stringify(all, null, 2));
+  await fs.rename(tmp, file);
+});
+
+ipcMain.handle('data-clear', async (_event, leagueId) => {
+  try {
+    await fs.unlink(dataFile(leagueId));
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+  }
+});
+
 ipcMain.handle('leagues-load', async () => {
   try {
     return JSON.parse(await fs.readFile(leaguesFile(), 'utf8'));

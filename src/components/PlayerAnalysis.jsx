@@ -132,7 +132,7 @@ export default function PlayerAnalysis({
             <>
               Tool ratings haven't been loaded yet. Click{' '}
               <button onClick={onLoadRatings} className="font-semibold underline">
-                Load ratings
+                Pull ratings
               </button>{' '}
               (requires being signed in to StatsPlus — use the header button).
             </>

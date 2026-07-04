@@ -1,58 +1,101 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { fetchEndpoint, extractYear, parseCsv } from '../api/statsplus';
+import { loadAllCached, saveCached } from '../lib/dataStore';
 
 // Endpoints per https://wiki.statsplus.net/web-tools/statsplus-api.
 // The player stat endpoints need the current season as ?year=, which comes
 // from /date, so that request runs first. Each endpoint is independent: a
 // failing one records an error and the rest of the view still works.
-export function useLeagueDetail(league) {
+//
+// Dataflow: nothing here fetches automatically. On mount, the hook reads
+// whatever was last pulled and cached locally (instant, works offline).
+// `pull()` is the explicit, user-triggered action that hits StatsPlus and
+// overwrites the cache; `pullRatings()` does the same for the separate
+// ratings job.
+export function useLeagueDetail(id, league) {
   const [data, setData] = useState({});
   const [errors, setErrors] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [updatedAt, setUpdatedAt] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [pulledAt, setPulledAt] = useState(null);
 
-  // Ratings are a separate on-demand job (takes ~60-90s on StatsPlus's
-  // side and requires the user to be signed in), never auto-fetched.
   const [ratings, setRatings] = useState(null);
   const [ratingsStatus, setRatingsStatus] = useState('idle'); // idle|running|done|error
   const [ratingsError, setRatingsError] = useState(null);
+  const [ratingsPulledAt, setRatingsPulledAt] = useState(null);
 
   const aliveRef = useRef(true);
 
-  const load = useCallback(async () => {
+  useEffect(() => {
+    aliveRef.current = true;
+    let cancelled = false;
+    (async () => {
+      const cached = await loadAllCached(id);
+      if (cancelled) return;
+      const raw = {};
+      let latest = null;
+      for (const [ep, entry] of Object.entries(cached)) {
+        if (ep === 'ratings') continue;
+        raw[ep] = entry.data;
+        if (!latest || entry.fetchedAt > latest) latest = entry.fetchedAt;
+      }
+      setData(raw);
+      setPulledAt(latest ? new Date(latest) : null);
+
+      if (cached.ratings) {
+        setRatings(cached.ratings.data);
+        setRatingsStatus('done');
+        setRatingsPulledAt(new Date(cached.ratings.fetchedAt));
+      }
+    })();
+    return () => {
+      cancelled = true;
+      aliveRef.current = false;
+    };
+  }, [id]);
+
+  const pull = useCallback(async () => {
     setLoading(true);
-    const results = {};
+    const raw = {};
     const errs = {};
 
     const grab = async (ep, params) => {
       try {
-        results[ep] = await fetchEndpoint(league, ep, params);
+        raw[ep] = await fetchEndpoint(league, ep, params);
+        await saveCached(id, ep, raw[ep]);
       } catch (err) {
         errs[ep] = err.message;
       }
       if (!aliveRef.current) return false;
-      // Stream results in as they arrive so the view fills progressively.
-      setData({ ...results });
+      setData({ ...raw });
       setErrors({ ...errs });
       return true;
     };
 
-    if (!(await grab('date'))) return;
-    const year = extractYear(results.date);
+    if (!(await grab('date'))) {
+      setLoading(false);
+      return;
+    }
+    const year = extractYear(raw.date);
 
     for (const ep of ['teams', 'players', 'teambatstats', 'teampitchstats']) {
-      if (!(await grab(ep))) return;
+      if (!(await grab(ep))) {
+        setLoading(false);
+        return;
+      }
     }
     for (const ep of ['playerbatstatsv2', 'playerpitchstatsv2']) {
-      if (!(await grab(ep, year ? { year } : undefined))) return;
+      if (!(await grab(ep, year ? { year } : undefined))) {
+        setLoading(false);
+        return;
+      }
     }
 
     if (!aliveRef.current) return;
-    setUpdatedAt(new Date());
+    setPulledAt(new Date());
     setLoading(false);
-  }, [league?.lgurl]);
+  }, [id, league?.lgurl]);
 
-  const loadRatings = useCallback(async () => {
+  const pullRatings = useCallback(async () => {
     const bridge = typeof window !== 'undefined' ? window.statsplusDesktop : null;
     if (!bridge?.ratings) {
       setRatingsStatus('error');
@@ -83,32 +126,28 @@ export function useLeagueDetail(league) {
         setRatingsError('Ratings job returned no data.');
         return;
       }
+      await saveCached(id, 'ratings', rows);
+      if (!aliveRef.current) return;
       setRatings(rows);
       setRatingsStatus('done');
+      setRatingsPulledAt(new Date());
     } catch (err) {
       if (!aliveRef.current) return;
       setRatingsStatus('error');
       setRatingsError(err.message);
     }
-  }, [league?.lgurl]);
-
-  useEffect(() => {
-    aliveRef.current = true;
-    load();
-    return () => {
-      aliveRef.current = false;
-    };
-  }, [load]);
+  }, [id, league?.lgurl]);
 
   return {
     data,
     errors,
     loading,
-    updatedAt,
-    refresh: load,
+    pulledAt,
+    pull,
     ratings,
     ratingsStatus,
     ratingsError,
-    loadRatings,
+    ratingsPulledAt,
+    pullRatings,
   };
 }

@@ -7,56 +7,79 @@ import {
   extractTeamName,
   extractExportStatus,
 } from '../api/statsplus';
+import { loadAllCached, saveCached } from '../lib/dataStore';
 
-export function useLeagueData(league) {
+const ENDPOINTS = ['date', 'exports', 'teams', 'teambatstats', 'teampitchstats'];
+
+function deriveOverview(raw, teamId) {
+  if (!raw.date && !raw.teams) return null;
+  const teamRow = raw.teams ? findTeamRow(raw.teams, teamId) : undefined;
+  return {
+    simDate: raw.date ? extractSimDate(raw.date) : undefined,
+    exportStatus: raw.exports ? extractExportStatus(raw.exports, teamId) : undefined,
+    teamRow,
+    teamName: extractTeamName(teamRow),
+    record: extractRecord(teamRow),
+    batting: raw.teambatstats ? findTeamRow(raw.teambatstats, teamId) : undefined,
+    pitching: raw.teampitchstats ? findTeamRow(raw.teampitchstats, teamId) : undefined,
+  };
+}
+
+// Dataflow: this hook never fetches on its own. It reads whatever was
+// last pulled from StatsPlus and cached locally; `pull()` is the only
+// thing that touches the network, triggered by the user (the card's ↻
+// button).
+export function useLeagueData(id, league) {
   const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [hasCache, setHasCache] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [updatedAt, setUpdatedAt] = useState(null);
+  const [pulledAt, setPulledAt] = useState(null);
   const aliveRef = useRef(true);
 
-  const load = useCallback(async () => {
+  useEffect(() => {
+    aliveRef.current = true;
+    let cancelled = false;
+    (async () => {
+      const cached = await loadAllCached(id);
+      if (cancelled) return;
+      const raw = {};
+      let latest = null;
+      for (const [ep, entry] of Object.entries(cached)) {
+        raw[ep] = entry.data;
+        if (!latest || entry.fetchedAt > latest) latest = entry.fetchedAt;
+      }
+      setData(deriveOverview(raw, league.teamId));
+      setPulledAt(latest ? new Date(latest) : null);
+      setHasCache(Object.keys(cached).length > 0);
+    })();
+    return () => {
+      cancelled = true;
+      aliveRef.current = false;
+    };
+  }, [id]);
+
+  const pull = useCallback(async () => {
     if (!league?.lgurl) return;
     setLoading(true);
     setError(null);
     try {
-      // Requests are spaced out by the global queue in api/statsplus.js.
-      const dateData = await fetchEndpoint(league, 'date');
-      const exportsData = await fetchEndpoint(league, 'exports');
-      const teamsData = await fetchEndpoint(league, 'teams');
-      const batData = await fetchEndpoint(league, 'teambatstats');
-      const pitchData = await fetchEndpoint(league, 'teampitchstats');
-
-      if (!aliveRef.current) return;
-
-      const teamRow = findTeamRow(teamsData, league.teamId);
-      setData({
-        simDate: extractSimDate(dateData),
-        exportStatus: extractExportStatus(exportsData, league.teamId),
-        teamRow,
-        teamName: extractTeamName(teamRow),
-        record: extractRecord(teamRow),
-        batting: findTeamRow(batData, league.teamId),
-        pitching: findTeamRow(pitchData, league.teamId),
-      });
-      setUpdatedAt(new Date());
+      const raw = {};
+      for (const ep of ENDPOINTS) {
+        raw[ep] = await fetchEndpoint(league, ep);
+        await saveCached(id, ep, raw[ep]);
+        if (!aliveRef.current) return;
+        setData(deriveOverview(raw, league.teamId));
+      }
+      setPulledAt(new Date());
+      setHasCache(true);
     } catch (err) {
       if (!aliveRef.current) return;
       setError(err.message);
     } finally {
       if (aliveRef.current) setLoading(false);
     }
-  }, [league?.lgurl, league?.teamId, league?.token]);
+  }, [id, league?.lgurl, league?.teamId]);
 
-  // Data loads once when the card mounts; after that, refresh is manual
-  // only (the ↻ button) — no background polling.
-  useEffect(() => {
-    aliveRef.current = true;
-    load();
-    return () => {
-      aliveRef.current = false;
-    };
-  }, [load]);
-
-  return { data, loading, error, updatedAt, refresh: load };
+  return { data, hasCache, loading, error, pulledAt, pull };
 }

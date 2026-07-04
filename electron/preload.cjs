@@ -14,3 +14,13 @@ contextBridge.exposeInMainWorld('leagueStore', {
   load: () => ipcRenderer.invoke('leagues-load'),
   save: (leagues) => ipcRenderer.invoke('leagues-save', leagues),
 });
+
+// Pulled StatsPlus data is cached to a JSON file per league on this
+// computer. The app renders from this cache; a "Pull data" action fetches
+// from StatsPlus and writes the result here.
+contextBridge.exposeInMainWorld('localData', {
+  loadAll: (leagueId) => ipcRenderer.invoke('data-load-all', leagueId),
+  save: (leagueId, endpoint, data) =>
+    ipcRenderer.invoke('data-save', { leagueId, endpoint, data }),
+  clear: (leagueId) => ipcRenderer.invoke('data-clear', leagueId),
+});
