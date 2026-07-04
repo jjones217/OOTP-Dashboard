@@ -6,9 +6,14 @@ import { useState } from 'react';
 // response body, and pastes it here. It's parsed and cached exactly like
 // a normal pull, so every view in the app picks it up the same way.
 export default function ImportDataModal({ endpoints, onImport, onClose }) {
+  const shellRunner =
+    typeof window !== 'undefined' ? window.shellRunner : undefined;
+  const defaultShell = shellRunner?.platform === 'win32' ? 'powershell' : 'bash';
   const [endpoint, setEndpoint] = useState(endpoints[0].value);
   const [text, setText] = useState('');
   const [year, setYear] = useState(endpoints[0].defaultYear ?? '');
+  const [shellName, setShellName] = useState(defaultShell);
+  const [command, setCommand] = useState('');
   const [status, setStatus] = useState(null); // null | 'saving' | 'done' | 'error'
   const [message, setMessage] = useState('');
 
@@ -48,6 +53,38 @@ export default function ImportDataModal({ endpoints, onImport, onClose }) {
     }
   };
 
+  const handleRunCommand = async (saveAfterRun = false) => {
+    if (!shellRunner?.run) return;
+    setStatus('saving');
+    setMessage('');
+    try {
+      const result = await shellRunner.run({ shellName, command });
+      if (!result.ok) {
+        throw new Error(result.error || 'Command failed.');
+      }
+      const output = String(result.stdout || '');
+      if (!output.trim()) {
+        throw new Error('Command completed but returned no stdout.');
+      }
+      setText(output);
+      if (saveAfterRun) {
+        const count = await onImport(
+          endpoint,
+          output,
+          selected.needsYear ? Number(year) : undefined
+        );
+        setStatus('done');
+        setMessage(typeof count === 'number' ? `Saved — ${count} rows.` : 'Saved.');
+      } else {
+        setStatus('done');
+        setMessage('Command output loaded. Review it, then save to cache.');
+      }
+    } catch (err) {
+      setStatus('error');
+      setMessage(err.message);
+    }
+  };
+
   const yearInvalid =
     selected.needsYear && (!year || !/^\d{4}$/.test(String(year)));
 
@@ -60,7 +97,7 @@ export default function ImportDataModal({ endpoints, onImport, onClose }) {
         role="dialog"
         aria-modal="true"
         aria-label="Import data manually"
-        className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl dark:bg-gray-800"
+        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-6 shadow-xl dark:bg-gray-800"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="mb-1 text-lg font-semibold text-gray-900 dark:text-gray-100">
@@ -118,6 +155,57 @@ export default function ImportDataModal({ endpoints, onImport, onClose }) {
           <p className="mb-3 text-xs text-amber-700 dark:text-amber-300">
             {selected.hint}
           </p>
+        )}
+
+        {shellRunner?.run && (
+          <div className="mb-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Run command
+              </label>
+              <select
+                value={shellName}
+                onChange={(e) => {
+                  setShellName(e.target.value);
+                  setStatus(null);
+                }}
+                className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+              >
+                <option value="powershell">PowerShell</option>
+                <option value="bash">Bash</option>
+              </select>
+            </div>
+            <textarea
+              value={command}
+              onChange={(e) => {
+                setCommand(e.target.value);
+                setStatus(null);
+              }}
+              rows={3}
+              placeholder={
+                shellName === 'powershell'
+                  ? 'Invoke-WebRequest "https://statsplus.net/league/api/date/" | Select-Object -ExpandProperty Content'
+                  : 'curl -L "https://statsplus.net/league/api/date/"'
+              }
+              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 font-mono text-xs text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+            />
+            <div className="mt-2 flex flex-wrap justify-end gap-2">
+              <button
+                onClick={() => void handleRunCommand(false)}
+                disabled={!command.trim() || status === 'saving' || yearInvalid}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+              >
+                Run and preview
+              </button>
+              <button
+                onClick={() => void handleRunCommand(true)}
+                disabled={!command.trim() || status === 'saving' || yearInvalid}
+                className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                Run and save
+              </button>
+            </div>
+          </div>
         )}
 
         <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">

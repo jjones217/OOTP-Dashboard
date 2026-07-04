@@ -3,6 +3,7 @@
 const { app, BrowserWindow, ipcMain, shell, net } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
+const { execFile } = require('child_process');
 
 // Endpoints per https://wiki.statsplus.net/web-tools/statsplus-api. The
 // desktop app talks to StatsPlus directly from the main process; requests
@@ -33,6 +34,53 @@ const jsonError = (status, error, extra = {}) => ({
 });
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const COMMAND_TIMEOUT_MS = 2 * 60 * 1000;
+const COMMAND_MAX_BUFFER = 25 * 1024 * 1024;
+
+function runShellCommand({ shellName, command }) {
+  return new Promise((resolve) => {
+    if (!command || typeof command !== 'string' || !command.trim()) {
+      resolve({ ok: false, error: 'Command is required.' });
+      return;
+    }
+
+    let executable;
+    let args;
+    if (shellName === 'powershell') {
+      executable = process.platform === 'win32' ? 'powershell.exe' : 'pwsh';
+      args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command];
+    } else if (shellName === 'bash') {
+      executable = process.platform === 'win32' ? 'bash.exe' : '/bin/bash';
+      args = ['-lc', command];
+    } else {
+      resolve({ ok: false, error: 'Choose PowerShell or Bash.' });
+      return;
+    }
+
+    execFile(
+      executable,
+      args,
+      {
+        timeout: COMMAND_TIMEOUT_MS,
+        maxBuffer: COMMAND_MAX_BUFFER,
+        windowsHide: true,
+      },
+      (error, stdout, stderr) => {
+        if (error) {
+          resolve({
+            ok: false,
+            error: stderr?.trim() || error.message,
+            stdout,
+            stderr,
+          });
+          return;
+        }
+        resolve({ ok: true, stdout, stderr });
+      }
+    );
+  });
+}
 
 // net.fetch goes through Chromium's network stack; credentials: 'include'
 // attaches the StatsPlus session cookies from the in-app login.
@@ -95,6 +143,8 @@ ipcMain.handle('statsplus-login', async () => {
   await new Promise((resolve) => win.on('closed', resolve));
   return { ok: true };
 });
+
+ipcMain.handle('shell-run', async (_event, payload) => runShellCommand(payload || {}));
 
 // The /ratings endpoint is an async job: the first request returns text
 // containing a poll URL; the CSV is ready after ~60-90 seconds. Requires

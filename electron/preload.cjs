@@ -8,6 +8,11 @@ contextBridge.exposeInMainWorld('statsplusDesktop', {
   ratings: (params) => ipcRenderer.invoke('statsplus-ratings', params),
 });
 
+contextBridge.exposeInMainWorld('shellRunner', {
+  platform: process.platform,
+  run: (params) => ipcRenderer.invoke('shell-run', params),
+});
+
 // League configs are stored in a JSON file on this computer (the app's
 // per-user data folder); the web version falls back to localStorage.
 contextBridge.exposeInMainWorld('leagueStore', {
