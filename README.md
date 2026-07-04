@@ -14,13 +14,23 @@ Runs two ways from the same codebase:
 ## Stack
 
 - React + Vite + Tailwind CSS
-- Firebase Realtime Database — stores league configs so leagues can be
-  added/edited/removed from the UI without redeploys, and stay in sync
-  between the desktop apps and the web app
 - Electron (`electron/`) — desktop shell; the main process fetches from
   StatsPlus directly
 - Vercel serverless function (`api/proxy.js`) — proxies StatsPlus API calls
   for the web app, because StatsPlus doesn't send CORS headers
+
+## Data storage
+
+League configs are stored locally on each computer — no cloud database:
+
+- **Desktop app**: a `leagues.json` file in the app's per-user data folder
+  - Windows: `%APPDATA%\OOTP Dashboard\leagues.json`
+  - macOS: `~/Library/Application Support/OOTP Dashboard/leagues.json`
+- **Web app / dev server**: browser localStorage
+
+Each computer keeps its own league list, so a league added on one machine
+has to be added on the other too. The `leagues.json` file can be copied
+between machines to transfer the list.
 
 ## StatsPlus API
 
@@ -34,33 +44,7 @@ testing can still trigger a 429 that takes ~5–10 minutes to clear.
 
 ## Setup
 
-### 1. Firebase
-
-1. Create a Firebase project and enable **Realtime Database**.
-2. Set the database rules (Realtime Database → Rules). For a personal,
-   unauthenticated dashboard:
-
-   ```json
-   {
-     "rules": {
-       ".read": true,
-       ".write": true
-     }
-   }
-   ```
-
-   > ⚠️ These rules make the database publicly readable/writable to anyone
-   > who has the database URL. Fine for a low-stakes personal dashboard;
-   > add Firebase Auth if that ever changes. If writes hang/time out when
-   > saving a league, the rules are the first thing to check.
-
-3. Copy `.env.example` to `.env` and fill in the values from
-   Project settings → General → Your apps. For desktop builds, also paste
-   the same values into `src/firebase-config.js` (safe to commit — the web
-   config identifies the project, it doesn't grant access) **or** add them
-   as GitHub repo secrets so CI bakes them in.
-
-### 2. Desktop app (Windows & macOS)
+### 1. Desktop app (Windows & macOS)
 
 Installers are built by GitHub Actions (`.github/workflows/desktop.yml`):
 
@@ -80,18 +64,17 @@ npm run desktop        # build the UI and launch Electron
 npm run desktop:pack   # build an installer for the current OS into release/
 ```
 
-### 3. Vercel (web app)
+### 2. Vercel (web app, optional)
 
-1. Import the repo; the Vite preset works as-is. `api/proxy.js` is picked
-   up automatically as a serverless function.
-2. Add all 7 `VITE_FIREBASE_*` environment variables in
-   Project → Settings → Environment Variables.
+Import the repo; the Vite preset works as-is and `api/proxy.js` is picked
+up automatically as a serverless function. No environment variables are
+needed.
 
 Note: `api/package.json` contains `{ "type": "commonjs" }` — required
 because the root `package.json` sets `"type": "module"` for Vite, but the
 serverless function is written in CommonJS. Don't delete it.
 
-### 4. Local development (web)
+### 3. Local development (web)
 
 ```sh
 npm install

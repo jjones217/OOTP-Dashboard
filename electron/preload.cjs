@@ -5,3 +5,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('statsplusDesktop', {
   fetch: (params) => ipcRenderer.invoke('statsplus-fetch', params),
 });
+
+// League configs are stored in a JSON file on this computer (the app's
+// per-user data folder); the web version falls back to localStorage.
+contextBridge.exposeInMainWorld('leagueStore', {
+  load: () => ipcRenderer.invoke('leagues-load'),
+  save: (leagues) => ipcRenderer.invoke('leagues-save', leagues),
+});

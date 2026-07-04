@@ -1,79 +1,79 @@
-import { useEffect, useState, useCallback } from 'react';
-import { ref, onValue, push, set, update, remove } from 'firebase/database';
-import { db, firebaseReady } from '../firebase';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { loadLeagues, saveLeagues } from '../storage';
 
-const SAVE_TIMEOUT_MS = 8000;
-
-// Firebase writes hang forever when database rules deny access, so wrap
-// them in a timeout that surfaces a useful error instead.
-function withTimeout(promise, label) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) =>
-      setTimeout(
-        () =>
-          reject(
-            new Error(
-              `${label} timed out. Check your Firebase Realtime Database ` +
-                'rules — reads and writes must be allowed.'
-            )
-          ),
-        SAVE_TIMEOUT_MS
-      )
-    ),
-  ]);
+function makeId() {
+  return crypto.randomUUID
+    ? crypto.randomUUID()
+    : `lg-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 export function useLeagues() {
   const [leagues, setLeagues] = useState({});
-  const [loading, setLoading] = useState(firebaseReady);
-  const [error, setError] = useState(
-    firebaseReady
-      ? null
-      : 'Firebase is not configured. Set the VITE_FIREBASE_* environment variables.'
-  );
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const leaguesRef = useRef({});
 
   useEffect(() => {
-    if (!firebaseReady) return undefined;
-    const leaguesRef = ref(db, 'leagues');
-    const unsubscribe = onValue(
-      leaguesRef,
-      (snapshot) => {
-        setLeagues(snapshot.val() || {});
+    let alive = true;
+    loadLeagues()
+      .then((data) => {
+        if (!alive) return;
+        leaguesRef.current = data;
+        setLeagues(data);
         setLoading(false);
-        setError(null);
-      },
-      (err) => {
-        setLoading(false);
+      })
+      .catch((err) => {
+        if (!alive) return;
         setError(`Failed to load leagues: ${err.message}`);
-      }
-    );
-    return unsubscribe;
+        setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
   }, []);
 
-  const addLeague = useCallback(async (league) => {
-    if (!firebaseReady) throw new Error('Firebase is not configured.');
-    const leaguesRef = ref(db, 'leagues');
-    const newRef = push(leaguesRef);
-    await withTimeout(
-      set(newRef, { ...league, createdAt: Date.now() }),
-      'Saving league'
-    );
-    return newRef.key;
+  const persist = useCallback(async (next) => {
+    leaguesRef.current = next;
+    setLeagues(next);
+    try {
+      await saveLeagues(next);
+      setError(null);
+    } catch (err) {
+      setError(`Failed to save leagues: ${err.message}`);
+      throw err;
+    }
   }, []);
 
-  const updateLeague = useCallback(async (id, changes) => {
-    if (!firebaseReady) throw new Error('Firebase is not configured.');
-    await withTimeout(
-      update(ref(db, `leagues/${id}`), changes),
-      'Updating league'
-    );
-  }, []);
+  const addLeague = useCallback(
+    async (league) => {
+      const id = makeId();
+      await persist({
+        ...leaguesRef.current,
+        [id]: { ...league, createdAt: Date.now() },
+      });
+      return id;
+    },
+    [persist]
+  );
 
-  const removeLeague = useCallback(async (id) => {
-    if (!firebaseReady) throw new Error('Firebase is not configured.');
-    await withTimeout(remove(ref(db, `leagues/${id}`)), 'Removing league');
-  }, []);
+  const updateLeague = useCallback(
+    async (id, changes) => {
+      await persist({
+        ...leaguesRef.current,
+        [id]: { ...leaguesRef.current[id], ...changes },
+      });
+    },
+    [persist]
+  );
+
+  const removeLeague = useCallback(
+    async (id) => {
+      const next = { ...leaguesRef.current };
+      delete next[id];
+      await persist(next);
+    },
+    [persist]
+  );
 
   return { leagues, loading, error, addLeague, updateLeague, removeLeague };
 }

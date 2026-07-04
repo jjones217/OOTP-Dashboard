@@ -2,6 +2,7 @@
 // "type": "module" for the Vite app.
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
+const fs = require('fs/promises');
 
 // Same request rules as api/proxy.js — the desktop app talks to StatsPlus
 // directly from the main process, so no CORS proxy is needed.
@@ -49,6 +50,30 @@ ipcMain.handle('statsplus-fetch', async (_event, { lgurl, endpoint, token } = {}
     return jsonError(res.status, `StatsPlus returned ${res.status}`);
   }
   return { ok: true, status: 200, body: text };
+});
+
+// League configs live in a JSON file in the app's per-user data folder
+// (Windows: %APPDATA%\OOTP Dashboard, macOS: ~/Library/Application
+// Support/OOTP Dashboard).
+const leaguesFile = () => path.join(app.getPath('userData'), 'leagues.json');
+
+ipcMain.handle('leagues-load', async () => {
+  try {
+    return JSON.parse(await fs.readFile(leaguesFile(), 'utf8'));
+  } catch (err) {
+    if (err.code === 'ENOENT') return {};
+    throw err;
+  }
+});
+
+ipcMain.handle('leagues-save', async (_event, leagues) => {
+  const file = leaguesFile();
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  // Write to a temp file and rename so a crash mid-write can't corrupt
+  // the league list.
+  const tmp = `${file}.tmp`;
+  await fs.writeFile(tmp, JSON.stringify(leagues || {}, null, 2));
+  await fs.rename(tmp, file);
 });
 
 function createWindow() {
