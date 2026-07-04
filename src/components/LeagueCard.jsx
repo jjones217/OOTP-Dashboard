@@ -14,7 +14,7 @@ function overviewImportEndpoints(league) {
   return [
     { value: 'date', label: 'Sim date (date)', urlFor: () => `${base}/date/` },
     { value: 'exports', label: 'Exports (exports)', urlFor: () => `${base}/exports/` },
-    { value: 'teams', label: 'Teams (teams)', urlFor: () => `${base}/teams/` },
+    { value: 'lgdata', label: 'League data (lgdata)', urlFor: () => `${base}/lgdata/` },
     {
       value: 'teambatstats',
       label: 'Team batting (teambatstats)',

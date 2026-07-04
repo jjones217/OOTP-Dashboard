@@ -1,12 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLeagueDetail } from '../hooks/useLeagueDetail';
-import {
-  findTeamRow,
-  extractTeamName,
-  extractRecord,
-  extractYear,
-  filterSeasonTotals,
-} from '../api/statsplus';
+import { extractYear, filterSeasonTotals } from '../api/statsplus';
 import {
   buildPlayerIndex,
   pickPlayerStats,
@@ -16,6 +10,7 @@ import {
   PITCH_STAT_KEYS,
 } from '../lib/players';
 import { statKey, collectYears } from '../lib/statYears';
+import { teamNamesFromLgdata, standingsFromLgdata, myTeamInfo } from '../lib/lgdata';
 import PlayerAnalysis from './PlayerAnalysis';
 import ImportDataModal from './ImportDataModal';
 
@@ -23,7 +18,7 @@ function detailImportEndpoints(league, seasonYear) {
   const base = `https://statsplus.net/${league.lgurl}/api`;
   return [
     { value: 'date', label: 'Sim date (date)', urlFor: () => `${base}/date/` },
-    { value: 'teams', label: 'Teams (teams)', urlFor: () => `${base}/teams/` },
+    { value: 'lgdata', label: 'League data (lgdata)', urlFor: () => `${base}/lgdata/` },
     { value: 'players', label: 'Players (players)', urlFor: () => `${base}/players/` },
     {
       value: 'teambatstats',
@@ -67,69 +62,9 @@ function asRows(data) {
   return [];
 }
 
-function teamNameById(teamsData) {
-  const names = {};
-  for (const row of filterSeasonTotals(asRows(teamsData))) {
-    const id =
-      row.team_id ?? row.teamid ?? row.id ?? row.ID ?? row.TeamID ?? row.tid;
-    if (id === undefined) continue;
-    names[String(id)] =
-      row.name || row.Name || row.team_name || row.nickname || row.abbr || `Team ${id}`;
-  }
-  return names;
-}
-
-function numeric(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-
-// --- Standings: derived from /teams W-L (StatsPlus has no standings API) ---
-function buildStandings(teamsData) {
-  const names = teamNameById(teamsData);
-  const rows = [];
-  for (const row of filterSeasonTotals(asRows(teamsData))) {
-    const id =
-      row.team_id ?? row.teamid ?? row.id ?? row.ID ?? row.TeamID ?? row.tid;
-    const w = numeric(row.w ?? row.W ?? row.wins ?? row.Wins);
-    const l = numeric(row.l ?? row.L ?? row.losses ?? row.Losses);
-    if (w === null || l === null) continue;
-    const games = w + l;
-    rows.push({
-      id: String(id ?? rows.length),
-      name:
-        names[String(id)] ||
-        row.name || row.team_name || row.nickname || `Team ${id}`,
-      w,
-      l,
-      pct: games > 0 ? w / games : 0,
-      division:
-        row.division ?? row.division_id ?? row.div ?? row.sub_league_id ?? null,
-      league: row.league ?? row.league_id ?? row.lg ?? null,
-    });
-  }
-  rows.sort((a, b) => b.pct - a.pct);
-
-  // Group by league/division when those fields exist.
-  const groups = new Map();
-  for (const row of rows) {
-    const key =
-      row.league != null || row.division != null
-        ? `${row.league != null ? `League ${row.league}` : ''}${
-            row.league != null && row.division != null ? ' · ' : ''
-          }${row.division != null ? `Division ${row.division}` : ''}`
-        : 'Standings';
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(row);
-  }
-  // Games behind, per group.
-  for (const rows2 of groups.values()) {
-    const top = rows2[0];
-    for (const r of rows2) {
-      r.gb = ((top.w - r.w) + (r.l - top.l)) / 2;
-    }
-  }
-  return groups;
+function formatStreak(s) {
+  if (s === null || s === undefined) return '';
+  return s > 0 ? `W${s}` : s < 0 ? `L${-s}` : '-';
 }
 
 function StandingsTables({ groups, myTeamId }) {
@@ -151,7 +86,8 @@ function StandingsTables({ groups, myTeamId }) {
                 <th className="px-2 py-2 text-right">W</th>
                 <th className="px-2 py-2 text-right">L</th>
                 <th className="px-2 py-2 text-right">PCT</th>
-                <th className="px-3 py-2 text-right">GB</th>
+                <th className="px-2 py-2 text-right">GB</th>
+                <th className="px-3 py-2 text-right">STRK</th>
               </tr>
             </thead>
             <tbody>
@@ -168,10 +104,13 @@ function StandingsTables({ groups, myTeamId }) {
                   <td className="px-2 py-1.5 text-right tabular-nums text-gray-800 dark:text-gray-200">{r.w}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums text-gray-800 dark:text-gray-200">{r.l}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums text-gray-800 dark:text-gray-200">
-                    {r.pct.toFixed(3).replace(/^0/, '')}
+                    {Number(r.pct).toFixed(3).replace(/^0/, '')}
+                  </td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-gray-800 dark:text-gray-200">
+                    {!r.gb ? '—' : r.gb}
                   </td>
                   <td className="px-3 py-1.5 text-right tabular-nums text-gray-800 dark:text-gray-200">
-                    {r.gb === 0 ? '—' : r.gb}
+                    {formatStreak(r.streak)}
                   </td>
                 </tr>
               ))}
@@ -256,7 +195,7 @@ export default function LeagueDetail({ id, league, onBack }) {
   const [selectedId, setSelectedId] = useState(null);
   const [showImport, setShowImport] = useState(false);
 
-  const names = useMemo(() => teamNameById(data.teams), [data.teams]);
+  const names = useMemo(() => teamNamesFromLgdata(data.lgdata), [data.lgdata]);
   const seasonYear = useMemo(() => extractYear(data.date), [data.date]);
 
   // Player batting/pitching stats are cached per season (playerbatstatsv2:
@@ -305,7 +244,10 @@ export default function LeagueDetail({ id, league, onBack }) {
     [data, selectedYear, ratings]
   );
   const allRatingRows = useMemo(() => asRows(ratings), [ratings]);
-  const standings = useMemo(() => buildStandings(data.teams), [data.teams]);
+  const standings = useMemo(
+    () => standingsFromLgdata(data.lgdata, league.teamId),
+    [data.lgdata, league.teamId]
+  );
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -319,7 +261,7 @@ export default function LeagueDetail({ id, league, onBack }) {
   }, [players, search, teamFilter, roleFilter]);
 
   const selected = players.find((p) => p.id === selectedId) || null;
-  const myTeamRow = findTeamRow(data.teams, league.teamId);
+  const myInfo = useMemo(() => myTeamInfo(data.lgdata, league.teamId), [data.lgdata, league.teamId]);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6">
@@ -333,9 +275,9 @@ export default function LeagueDetail({ id, league, onBack }) {
           </button>
           <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
             {league.name}
-            {myTeamRow && (
+            {myInfo?.name && (
               <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">
-                {extractTeamName(myTeamRow)} {extractRecord(myTeamRow)}
+                {myInfo.name} {myInfo.record}
               </span>
             )}
           </h2>

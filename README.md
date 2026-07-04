@@ -79,7 +79,19 @@ Two things are special:
 - Real `playerpitchstatsv2`/`playerbatstatsv2` columns don't include
   `era`/`whip`/`avg`/`obp`/`slg`/`ops` — they're computed
   (`withPitchingRates`/`withBattingRates` in `src/lib/players.js`)
-  whenever the raw columns aren't present.
+  whenever the raw columns aren't present. `teambatstats` already
+  includes the rate stats directly; `teampitchstats` has `era` but not
+  `whip`, so only `whip` gets computed there.
+- **`/teams` has no win-loss data at all** — just `{ID, Name, Nickname,
+  Parent Team ID}`. Standings, team names, and division/league
+  structure all come from **`/lgdata`** instead (`src/lib/lgdata.js`),
+  which returns the real `standings` array (w/l/pct/gb/streak, no
+  derivation needed) plus `teams`/`divisions`/`subleagues` for names and
+  grouping. `/lgdata` covers the *entire* org in one response — every
+  affiliate, rookie, even HS/NCAA level in some saves — so standings are
+  narrowed to just the league the user's own team plays in, while name
+  lookups stay unfiltered (so any player at any level still resolves to
+  a real name).
 
 Rate-limited? Every card and the league detail view have a **📋 Import
 manually** button: open the endpoint URL yourself (a plain browser

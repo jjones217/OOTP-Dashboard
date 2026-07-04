@@ -89,7 +89,7 @@ export function useLeagueDetail(id, league) {
     }
     const year = extractYear(raw.date);
 
-    for (const ep of ['teams', 'players', 'teambatstats', 'teampitchstats']) {
+    for (const ep of ['lgdata', 'players', 'teambatstats', 'teampitchstats']) {
       if (!(await grab(ep))) {
         setLoading(false);
         return;

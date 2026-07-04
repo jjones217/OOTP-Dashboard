@@ -4,23 +4,24 @@ import {
   parseResponseText,
   extractSimDate,
   findTeamRow,
-  extractRecord,
-  extractTeamName,
   extractExportStatus,
 } from '../api/statsplus';
 import { loadAllCached, saveCached } from '../lib/dataStore';
+import { myTeamInfo } from '../lib/lgdata';
 
-const ENDPOINTS = ['date', 'exports', 'teams', 'teambatstats', 'teampitchstats'];
+// /teams has no win-loss data at all (just {ID, Name, Nickname, Parent
+// Team ID}) — /lgdata's nested teams+standings replaces it for both name
+// and record.
+const ENDPOINTS = ['date', 'exports', 'lgdata', 'teambatstats', 'teampitchstats'];
 
 function deriveOverview(raw, teamId) {
-  if (!raw.date && !raw.teams) return null;
-  const teamRow = raw.teams ? findTeamRow(raw.teams, teamId) : undefined;
+  if (!raw.date && !raw.lgdata) return null;
+  const info = raw.lgdata ? myTeamInfo(raw.lgdata, teamId) : {};
   return {
     simDate: raw.date ? extractSimDate(raw.date) : undefined,
     exportStatus: raw.exports ? extractExportStatus(raw.exports, teamId) : undefined,
-    teamRow,
-    teamName: extractTeamName(teamRow),
-    record: extractRecord(teamRow),
+    teamName: info.name,
+    record: info.record,
     batting: raw.teambatstats ? findTeamRow(raw.teambatstats, teamId) : undefined,
     pitching: raw.teampitchstats ? findTeamRow(raw.teampitchstats, teamId) : undefined,
   };
