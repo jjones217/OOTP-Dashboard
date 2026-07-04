@@ -5,15 +5,22 @@ Personal GM dashboard for OOTP Online leagues hosted on
 record, and team batting/pitching stats for each of your leagues, with data
 refreshed automatically every 10 minutes.
 
-Deployed at **ootp.navhawk.net** on Vercel.
+Runs two ways from the same codebase:
+
+- **Desktop app** (Windows + macOS, Electron) — talks to StatsPlus
+  directly, no proxy or hosting needed
+- **Web app** at **ootp.navhawk.net** on Vercel
 
 ## Stack
 
 - React + Vite + Tailwind CSS
 - Firebase Realtime Database — stores league configs so leagues can be
-  added/edited/removed from the UI without redeploys
+  added/edited/removed from the UI without redeploys, and stay in sync
+  between the desktop apps and the web app
+- Electron (`electron/`) — desktop shell; the main process fetches from
+  StatsPlus directly
 - Vercel serverless function (`api/proxy.js`) — proxies StatsPlus API calls
-  because StatsPlus doesn't send CORS headers
+  for the web app, because StatsPlus doesn't send CORS headers
 
 ## StatsPlus API
 
@@ -48,9 +55,32 @@ testing can still trigger a 429 that takes ~5–10 minutes to clear.
    > saving a league, the rules are the first thing to check.
 
 3. Copy `.env.example` to `.env` and fill in the values from
-   Project settings → General → Your apps.
+   Project settings → General → Your apps. For desktop builds, also paste
+   the same values into `src/firebase-config.js` (safe to commit — the web
+   config identifies the project, it doesn't grant access) **or** add them
+   as GitHub repo secrets so CI bakes them in.
 
-### 2. Vercel
+### 2. Desktop app (Windows & macOS)
+
+Installers are built by GitHub Actions (`.github/workflows/desktop.yml`):
+
+- **Manual build**: Actions → "Desktop builds" → Run workflow. Download
+  the `.exe` (Windows) or `.dmg` (macOS) from the run's artifacts.
+- **Release build**: push a tag like `v0.1.0` and the installers are
+  attached to a GitHub Release automatically.
+
+The macOS build is unsigned (no Apple Developer account needed): the first
+time, right-click the app → **Open** → Open, or run
+`xattr -cr "/Applications/OOTP Dashboard.app"`.
+
+Local development / packaging:
+
+```sh
+npm run desktop        # build the UI and launch Electron
+npm run desktop:pack   # build an installer for the current OS into release/
+```
+
+### 3. Vercel (web app)
 
 1. Import the repo; the Vite preset works as-is. `api/proxy.js` is picked
    up automatically as a serverless function.
@@ -61,7 +91,7 @@ Note: `api/package.json` contains `{ "type": "commonjs" }` — required
 because the root `package.json` sets `"type": "module"` for Vite, but the
 serverless function is written in CommonJS. Don't delete it.
 
-### 3. Local development
+### 4. Local development (web)
 
 ```sh
 npm install

@@ -1,15 +1,31 @@
-// Client for the StatsPlus proxy (/api/proxy). All requests go through the
-// serverless function because StatsPlus doesn't send CORS headers.
+// StatsPlus client. In the browser, requests go through the serverless
+// proxy (/api/proxy) because StatsPlus doesn't send CORS headers. In the
+// Electron desktop app, the preload bridge routes them through the main
+// process, which can call StatsPlus directly.
 
-export async function fetchEndpoint(league, endpoint) {
+const desktopBridge =
+  typeof window !== 'undefined' ? window.statsplusDesktop : undefined;
+
+async function request(league, endpoint) {
+  if (desktopBridge) {
+    const { ok, status, body } = await desktopBridge.fetch({
+      lgurl: league.lgurl,
+      endpoint,
+      token: league.token || '',
+    });
+    return { ok, status, text: body };
+  }
   const params = new URLSearchParams({ lgurl: league.lgurl, endpoint });
   if (league.token) params.set('token', league.token);
-
   const res = await fetch(`/api/proxy?${params}`);
-  const text = await res.text();
+  return { ok: res.ok, status: res.status, text: await res.text() };
+}
 
-  if (!res.ok) {
-    let message = `Request failed (${res.status})`;
+export async function fetchEndpoint(league, endpoint) {
+  const { ok, status, text } = await request(league, endpoint);
+
+  if (!ok) {
+    let message = `Request failed (${status})`;
     try {
       const body = JSON.parse(text);
       if (body.error) message = body.error;
@@ -17,7 +33,7 @@ export async function fetchEndpoint(league, endpoint) {
       /* non-JSON error body; keep generic message */
     }
     const err = new Error(message);
-    err.status = res.status;
+    err.status = status;
     throw err;
   }
 

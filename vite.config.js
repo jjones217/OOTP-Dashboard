@@ -65,5 +65,7 @@ function statsplusDevProxy() {
 }
 
 export default defineConfig({
+  // Relative base so the built app also works from file:// in Electron.
+  base: './',
   plugins: [react(), statsplusDevProxy()],
 });
