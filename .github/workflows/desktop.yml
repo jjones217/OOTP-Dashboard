@@ -3,6 +3,7 @@ name: Desktop builds
 on:
   workflow_dispatch:
   push:
+    branches: ['main']
     tags: ['v*']
 
 jobs:
