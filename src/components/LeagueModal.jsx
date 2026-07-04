@@ -156,19 +156,10 @@ export default function LeagueModal({ initial, onSave, onClose }) {
             )}
           </div>
 
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-              API token <span className="font-normal text-gray-400">(optional)</span>
-            </label>
-            <input
-              type="password"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder="Only needed for private leagues"
-              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-              autoComplete="off"
-            />
-          </div>
+          <p className="text-xs text-gray-400 dark:text-gray-500">
+            Player ratings require signing in to StatsPlus — use the
+            "Sign in to StatsPlus" button in the app header (desktop app).
+          </p>
 
           {saveError && (
             <div className="rounded-lg bg-red-50 p-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">

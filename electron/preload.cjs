@@ -4,6 +4,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 // routes StatsPlus requests through the main process instead of /api/proxy.
 contextBridge.exposeInMainWorld('statsplusDesktop', {
   fetch: (params) => ipcRenderer.invoke('statsplus-fetch', params),
+  login: () => ipcRenderer.invoke('statsplus-login'),
+  ratings: (params) => ipcRenderer.invoke('statsplus-ratings', params),
 });
 
 // League configs are stored in a JSON file on this computer (the app's

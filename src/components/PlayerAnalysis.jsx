@@ -55,7 +55,13 @@ function StatLine({ title, row, keys }) {
 
 // Scores are shown on the classic 20-80 scouting scale, computed from the
 // player's tool ratings normalized against the league-wide scale.
-export default function PlayerAnalysis({ player, allRatingRows, teamName, ratingsError }) {
+export default function PlayerAnalysis({
+  player,
+  allRatingRows,
+  teamName,
+  ratingsStatus,
+  onLoadRatings,
+}) {
   if (!player) {
     return (
       <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-gray-300 p-8 text-center text-sm text-gray-400 dark:border-gray-600 dark:text-gray-500">
@@ -118,10 +124,19 @@ export default function PlayerAnalysis({ player, allRatingRows, teamName, rating
         </>
       ) : (
         <div className="mb-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
-          No tool ratings available for this player.
-          {ratingsError
-            ? ` The ratings endpoint reported: ${ratingsError}. If your league requires it, add your StatsPlus API token to this league (edit the league from the dashboard).`
-            : ''}
+          {ratingsStatus === 'running' ? (
+            'Ratings job is running — the radar charts will appear here when it finishes (usually 60-90 seconds).'
+          ) : ratingsStatus === 'done' ? (
+            'No tool ratings found for this player in the ratings export.'
+          ) : (
+            <>
+              Tool ratings haven't been loaded yet. Click{' '}
+              <button onClick={onLoadRatings} className="font-semibold underline">
+                Load ratings
+              </button>{' '}
+              (requires being signed in to StatsPlus — use the header button).
+            </>
+          )}
         </div>
       )}
 

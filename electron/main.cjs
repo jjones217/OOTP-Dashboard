@@ -1,11 +1,14 @@
 // Electron main process. CommonJS (.cjs) because the root package.json is
 // "type": "module" for the Vite app.
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, net } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 
-// Same request rules as api/proxy.js — the desktop app talks to StatsPlus
-// directly from the main process, so no CORS proxy is needed.
+// Endpoints per https://wiki.statsplus.net/web-tools/statsplus-api. The
+// desktop app talks to StatsPlus directly from the main process; requests
+// carry the user's StatsPlus login cookies (credentials: 'include'), so
+// endpoints that require being signed in work after using the in-app
+// "Sign in to StatsPlus" window.
 const ALLOWED_ENDPOINTS = new Set([
   'date',
   'exports',
@@ -14,12 +17,13 @@ const ALLOWED_ENDPOINTS = new Set([
   'teambatstats',
   'teampitchstats',
   'players',
-  'batstats',
-  'pitchstats',
-  'standings',
+  'playerbatstatsv2',
+  'playerpitchstatsv2',
+  'playerfieldstatsv2',
+  'gamehistory',
   'ratings',
-  'tradeblock',
 ]);
+const ALLOWED_PARAMS = ['year', 'split', 'pid', 'lid'];
 const LGURL_RE = /^[a-zA-Z0-9_-]+$/;
 
 const jsonError = (status, error) => ({
@@ -28,34 +32,117 @@ const jsonError = (status, error) => ({
   body: JSON.stringify({ error }),
 });
 
-ipcMain.handle('statsplus-fetch', async (_event, { lgurl, endpoint, token } = {}) => {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// net.fetch goes through Chromium's network stack; credentials: 'include'
+// attaches the StatsPlus session cookies from the in-app login.
+async function statsplusFetch(url) {
+  const res = await net.fetch(url, { credentials: 'include' });
+  const text = await res.text();
+  return { res, text };
+}
+
+ipcMain.handle(
+  'statsplus-fetch',
+  async (_event, { lgurl, endpoint, params } = {}) => {
+    if (!lgurl || !LGURL_RE.test(lgurl)) {
+      return jsonError(400, 'Invalid or missing lgurl');
+    }
+    if (!endpoint || !ALLOWED_ENDPOINTS.has(endpoint)) {
+      return jsonError(400, 'Invalid or missing endpoint');
+    }
+
+    const url = new URL(`https://statsplus.net/${lgurl}/api/${endpoint}/`);
+    for (const key of ALLOWED_PARAMS) {
+      if (params && params[key] !== undefined && params[key] !== '') {
+        url.searchParams.set(key, String(params[key]));
+      }
+    }
+
+    let res;
+    let text;
+    try {
+      ({ res, text } = await statsplusFetch(url));
+    } catch (err) {
+      return jsonError(502, `Request failed: ${err.message}`);
+    }
+
+    if (res.status === 429) {
+      return jsonError(429, 'StatsPlus rate limit hit. Wait a few minutes and try again.');
+    }
+    if (!res.ok) {
+      return jsonError(res.status, `StatsPlus returned ${res.status}`);
+    }
+    return { ok: true, status: 200, body: text };
+  }
+);
+
+// Opens a real browser window on statsplus.net so the user can sign in.
+// The session cookies persist in the app's user-data folder and are then
+// attached to every API request.
+ipcMain.handle('statsplus-login', async () => {
+  const win = new BrowserWindow({
+    width: 980,
+    height: 800,
+    title: 'Sign in to StatsPlus',
+    webPreferences: { nodeIntegration: false, contextIsolation: true },
+  });
+  win.loadURL('https://statsplus.net/');
+  await new Promise((resolve) => win.on('closed', resolve));
+  return { ok: true };
+});
+
+// The /ratings endpoint is an async job: the first request returns text
+// containing a poll URL; the CSV is ready after ~60-90 seconds. Requires
+// being signed in to StatsPlus and linked to a team in the league.
+ipcMain.handle('statsplus-ratings', async (_event, { lgurl } = {}) => {
   if (!lgurl || !LGURL_RE.test(lgurl)) {
     return jsonError(400, 'Invalid or missing lgurl');
   }
-  if (!endpoint || !ALLOWED_ENDPOINTS.has(endpoint)) {
-    return jsonError(400, 'Invalid or missing endpoint');
-  }
 
-  const url = new URL(`https://statsplus.net/${lgurl}/api/${endpoint}`);
-  if (token) url.searchParams.set('token', token);
-
-  let res;
+  let text;
   try {
-    res = await fetch(url, {
-      headers: { 'User-Agent': 'ootp-dashboard-desktop' },
-    });
+    ({ text } = await statsplusFetch(`https://statsplus.net/${lgurl}/api/ratings/`));
   } catch (err) {
     return jsonError(502, `Request failed: ${err.message}`);
   }
 
-  const text = await res.text();
-  if (res.status === 429) {
-    return jsonError(429, 'StatsPlus rate limit hit. Wait a few minutes and try again.');
+  const wait = text.match(/wait (\d+) seconds/i);
+  if (wait) {
+    return jsonError(429, `StatsPlus rate limit — wait ${wait[1]} seconds and try again.`);
   }
-  if (!res.ok) {
-    return jsonError(res.status, `StatsPlus returned ${res.status}`);
+
+  // Some hosts may return the CSV directly.
+  if (text.includes(',') && text.includes('\n') && !/https?:\/\//.test(text.slice(0, 200))) {
+    return { ok: true, status: 200, body: text };
   }
-  return { ok: true, status: 200, body: text };
+
+  const pollMatch = text.match(/https?:\/\/[^\s"']*\?request=[^\s"']+/);
+  if (!pollMatch) {
+    return jsonError(
+      403,
+      'Ratings job did not start. Make sure you are signed in to StatsPlus ' +
+        '(button in the app header) and your account is linked to a team in this league.'
+    );
+  }
+
+  for (let attempt = 0; attempt < 24; attempt++) {
+    await sleep(10_000);
+    let pollText;
+    try {
+      ({ text: pollText } = await statsplusFetch(pollMatch[0]));
+    } catch {
+      continue;
+    }
+    if (
+      pollText.includes('still in progress') ||
+      pollText.startsWith('Request received')
+    ) {
+      continue;
+    }
+    return { ok: true, status: 200, body: pollText };
+  }
+  return jsonError(504, 'Ratings job timed out after 4 minutes. Try again.');
 });
 
 // League configs live in a JSON file in the app's per-user data folder

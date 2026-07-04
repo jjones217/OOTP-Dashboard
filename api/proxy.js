@@ -11,12 +11,12 @@ const ALLOWED_ENDPOINTS = new Set([
   'teambatstats',
   'teampitchstats',
   'players',
-  'batstats',
-  'pitchstats',
-  'standings',
-  'ratings',
-  'tradeblock',
+  'playerbatstatsv2',
+  'playerpitchstatsv2',
+  'playerfieldstatsv2',
+  'gamehistory',
 ]);
+const ALLOWED_PARAMS = ['year', 'split', 'pid', 'lid'];
 
 // League URL slugs are simple path segments, e.g. "myleague".
 const LGURL_RE = /^[a-zA-Z0-9_-]+$/;
@@ -32,7 +32,7 @@ module.exports = async (req, res) => {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { lgurl, endpoint, token } = req.query;
+  const { lgurl, endpoint } = req.query;
 
   if (!lgurl || !LGURL_RE.test(lgurl)) {
     return res.status(400).json({ error: 'Invalid or missing lgurl' });
@@ -41,9 +41,11 @@ module.exports = async (req, res) => {
     return res.status(400).json({ error: 'Invalid or missing endpoint' });
   }
 
-  const url = new URL(`https://statsplus.net/${lgurl}/api/${endpoint}`);
-  if (token) {
-    url.searchParams.set('token', token);
+  const url = new URL(`https://statsplus.net/${lgurl}/api/${endpoint}/`);
+  for (const key of ALLOWED_PARAMS) {
+    if (req.query[key] !== undefined && req.query[key] !== '') {
+      url.searchParams.set(key, String(req.query[key]));
+    }
   }
 
   let upstream;

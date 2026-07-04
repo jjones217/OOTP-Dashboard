@@ -36,13 +36,26 @@ between machines to transfer the list.
 
 ## StatsPlus API
 
-Requests follow the pattern `https://statsplus.net/{lgurl}/api/{endpoint}`.
-Endpoints used: `date`, `exports`, `lgdata`, `teams`, `teambatstats`,
-`teampitchstats`. Responses are JSON or CSV; the client handles both.
+Requests follow the pattern `https://statsplus.net/{lgurl}/api/{endpoint}/`
+(docs: https://wiki.statsplus.net/web-tools/statsplus-api). Endpoints used:
+`date`, `exports`, `teams`, `teambatstats`, `teampitchstats`, `players`,
+`playerbatstatsv2?year=N`, `playerpitchstatsv2?year=N`, and `ratings`.
+Responses are JSON or CSV; the client handles both.
 
-StatsPlus rate-limits aggressively — the proxy caches responses at the edge
-for 60 seconds and the client staggers its requests, but repeated manual
-testing can still trigger a 429 that takes ~5–10 minutes to clear.
+Two things are special:
+
+- **Auth is the StatsPlus browser login (cookies), not an API token.** The
+  desktop app has a "Sign in to StatsPlus" button that opens a login
+  window; after that, API calls run with that session. The web app can
+  only use the public endpoints.
+- **`/ratings` is an async job** — StatsPlus generates the export in
+  60-90 seconds. The desktop app starts the job, polls until it's done,
+  and requires being signed in and linked to a team in the league. It's
+  triggered manually from the Players tab ("Load ratings").
+
+StatsPlus rate-limits aggressively — all requests go through a queue that
+spaces them out, but repeated manual testing can still trigger a 429 that
+takes a few minutes to clear.
 
 ## Setup
 

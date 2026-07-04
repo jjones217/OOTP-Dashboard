@@ -30,23 +30,29 @@ function queued(fn) {
   return p;
 }
 
-async function request(league, endpoint) {
+async function request(league, endpoint, extraParams = {}) {
   if (desktopBridge) {
     const { ok, status, body } = await desktopBridge.fetch({
       lgurl: league.lgurl,
       endpoint,
-      token: league.token || '',
+      params: extraParams,
     });
     return { ok, status, text: body };
   }
   const params = new URLSearchParams({ lgurl: league.lgurl, endpoint });
-  if (league.token) params.set('token', league.token);
+  for (const [key, value] of Object.entries(extraParams)) {
+    if (value !== undefined && value !== null && value !== '') {
+      params.set(key, String(value));
+    }
+  }
   const res = await fetch(`/api/proxy?${params}`);
   return { ok: res.ok, status: res.status, text: await res.text() };
 }
 
-export async function fetchEndpoint(league, endpoint) {
-  const { ok, status, text } = await queued(() => request(league, endpoint));
+export async function fetchEndpoint(league, endpoint, extraParams = {}) {
+  const { ok, status, text } = await queued(() =>
+    request(league, endpoint, extraParams)
+  );
 
   if (!ok) {
     let message = `Request failed (${status})`;
@@ -68,19 +74,56 @@ export async function fetchEndpoint(league, endpoint) {
   }
 }
 
-// Minimal CSV parser for StatsPlus CSV endpoints (no quoted commas observed
-// in their output, so a simple split is sufficient).
+// CSV parser for StatsPlus CSV endpoints. Handles quoted fields (player
+// names can contain commas) and escaped quotes ("" -> ").
 export function parseCsv(text) {
-  const lines = text.trim().split(/\r?\n/).filter(Boolean);
-  if (lines.length === 0) return [];
-  const headers = lines[0].split(',').map((h) => h.trim());
-  return lines.slice(1).map((line) => {
-    const cells = line.split(',');
-    const row = {};
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+  const pushField = () => {
+    row.push(field);
+    field = '';
+  };
+  const pushRow = () => {
+    pushField();
+    if (row.length > 1 || row[0].trim() !== '') rows.push(row);
+    row = [];
+  };
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += c;
+      }
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ',') {
+      pushField();
+    } else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      pushRow();
+    } else {
+      field += c;
+    }
+  }
+  if (field !== '' || row.length > 0) pushRow();
+
+  if (rows.length < 2) return [];
+  const headers = rows[0].map((h) => h.trim());
+  return rows.slice(1).map((cells) => {
+    const obj = {};
     headers.forEach((h, i) => {
-      row[h] = cells[i] !== undefined ? cells[i].trim() : '';
+      obj[h] = cells[i] !== undefined ? cells[i].trim() : '';
     });
-    return row;
+    return obj;
   });
 }
 
@@ -108,6 +151,15 @@ export function extractSimDate(data) {
     return firstField(data, ['date', 'Date', 'current_date', 'game_date', 'simdate']);
   }
   return undefined;
+}
+
+// Season year from the /date response, e.g. "2027-05-01" -> 2027. Used
+// as the `year` param for the player stat endpoints.
+export function extractYear(data) {
+  const date = extractSimDate(data);
+  if (!date) return null;
+  const m = String(date).match(/\d{4}/);
+  return m ? Number(m[0]) : null;
 }
 
 export function findTeamRow(data, teamId) {

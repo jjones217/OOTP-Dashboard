@@ -27,9 +27,9 @@ function numeric(v) {
   return Number.isFinite(n) ? n : null;
 }
 
-// --- Standings: prefer /standings, otherwise derive from /teams W-L ---
-function buildStandings(standingsData, teamsData) {
-  const source = asRows(standingsData).length > 0 ? standingsData : teamsData;
+// --- Standings: derived from /teams W-L (StatsPlus has no standings API) ---
+function buildStandings(teamsData) {
+  const source = teamsData;
   const names = teamNameById(teamsData);
   const rows = [];
   for (const row of asRows(source)) {
@@ -177,7 +177,17 @@ function TeamStatsTable({ title, data, names, keys, myTeamId }) {
 }
 
 export default function LeagueDetail({ league, onBack }) {
-  const { data, errors, loading, updatedAt, refresh } = useLeagueDetail(league);
+  const {
+    data,
+    errors,
+    loading,
+    updatedAt,
+    refresh,
+    ratings,
+    ratingsStatus,
+    ratingsError,
+    loadRatings,
+  } = useLeagueDetail(league);
   const [tab, setTab] = useState('players');
   const [search, setSearch] = useState('');
   const [teamFilter, setTeamFilter] = useState(String(league.teamId ?? 'all'));
@@ -189,17 +199,14 @@ export default function LeagueDetail({ league, onBack }) {
     () =>
       buildPlayerIndex({
         players: data.players,
-        batstats: data.batstats,
-        pitchstats: data.pitchstats,
-        ratings: data.ratings,
+        batstats: data.playerbatstatsv2,
+        pitchstats: data.playerpitchstatsv2,
+        ratings,
       }),
-    [data.players, data.batstats, data.pitchstats, data.ratings]
+    [data.players, data.playerbatstatsv2, data.playerpitchstatsv2, ratings]
   );
-  const allRatingRows = useMemo(() => asRows(data.ratings), [data.ratings]);
-  const standings = useMemo(
-    () => buildStandings(data.standings, data.teams),
-    [data.standings, data.teams]
-  );
+  const allRatingRows = useMemo(() => asRows(ratings), [ratings]);
+  const standings = useMemo(() => buildStandings(data.teams), [data.teams]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -304,7 +311,44 @@ export default function LeagueDetail({ league, onBack }) {
             <span className="text-xs text-gray-400 dark:text-gray-500">
               {filtered.length} players
             </span>
+
+            <span className="ml-auto">
+              {ratingsStatus === 'idle' && (
+                <button
+                  onClick={loadRatings}
+                  className="rounded-md border border-blue-300 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-400 dark:hover:bg-blue-900/20"
+                  title="StatsPlus generates the ratings export on their side; it takes about 60-90 seconds"
+                >
+                  Load ratings (~90s)
+                </button>
+              )}
+              {ratingsStatus === 'running' && (
+                <span className="text-sm text-gray-500 dark:text-gray-400">
+                  ⏳ Ratings job running… usually 60-90s
+                </span>
+              )}
+              {ratingsStatus === 'done' && (
+                <span className="text-sm text-green-600 dark:text-green-400">
+                  ✓ Ratings loaded
+                </span>
+              )}
+              {ratingsStatus === 'error' && (
+                <button
+                  onClick={loadRatings}
+                  className="rounded-md border border-red-300 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+                  title={ratingsError || ''}
+                >
+                  Ratings failed — retry
+                </button>
+              )}
+            </span>
           </div>
+
+          {ratingsStatus === 'error' && ratingsError && (
+            <div className="mb-3 rounded-lg bg-red-50 p-3 text-xs text-red-700 dark:bg-red-900/30 dark:text-red-300">
+              {ratingsError}
+            </div>
+          )}
 
           {players.length === 0 && !loading && (
             <div className="mb-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
@@ -365,7 +409,8 @@ export default function LeagueDetail({ league, onBack }) {
               player={selected}
               allRatingRows={allRatingRows}
               teamName={selected ? names[String(selected.teamId)] : null}
-              ratingsError={errors.ratings}
+              ratingsStatus={ratingsStatus}
+              onLoadRatings={loadRatings}
             />
           </div>
         </>

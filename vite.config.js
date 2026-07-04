@@ -12,12 +12,12 @@ function statsplusDevProxy() {
     'teambatstats',
     'teampitchstats',
     'players',
-    'batstats',
-    'pitchstats',
-    'standings',
-    'ratings',
-    'tradeblock',
+    'playerbatstatsv2',
+    'playerpitchstatsv2',
+    'playerfieldstatsv2',
+    'gamehistory',
   ]);
+  const ALLOWED_PARAMS = ['year', 'split', 'pid', 'lid'];
   const LGURL_RE = /^[a-zA-Z0-9_-]+$/;
 
   return {
@@ -27,7 +27,6 @@ function statsplusDevProxy() {
         const params = new URL(req.url, 'http://localhost').searchParams;
         const lgurl = params.get('lgurl');
         const endpoint = params.get('endpoint');
-        const token = params.get('token');
 
         const fail = (status, error) => {
           res.statusCode = status;
@@ -40,8 +39,11 @@ function statsplusDevProxy() {
           return fail(400, 'Invalid or missing endpoint');
         }
 
-        const url = new URL(`https://statsplus.net/${lgurl}/api/${endpoint}`);
-        if (token) url.searchParams.set('token', token);
+        const url = new URL(`https://statsplus.net/${lgurl}/api/${endpoint}/`);
+        for (const key of ALLOWED_PARAMS) {
+          const v = params.get(key);
+          if (v) url.searchParams.set(key, v);
+        }
 
         try {
           const upstream = await fetch(url, {
