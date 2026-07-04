@@ -8,7 +8,7 @@ import {
 import { loadAllCached, saveCached } from '../lib/dataStore';
 import { statKey } from '../lib/statYears';
 
-const YEAR_KEYED_ENDPOINTS = new Set(['playerbatstatsv2', 'playerpitchstatsv2']);
+const YEAR_KEYED_ENDPOINTS = new Set(['playerbatstatsv2', 'playerpitchstatsv2', 'playerfieldstatsv2']);
 
 // Endpoints per https://wiki.statsplus.net/web-tools/statsplus-api.
 // The player stat endpoints need the current season as ?year=, which comes
@@ -102,7 +102,7 @@ export function useLeagueDetail(id, league) {
         return;
       }
     }
-    for (const ep of ['playerbatstatsv2', 'playerpitchstatsv2']) {
+    for (const ep of ['playerbatstatsv2', 'playerpitchstatsv2', 'playerfieldstatsv2']) {
       if (!(await grab(ep, year ? { year } : undefined, statKey(ep, year)))) {
         setLoading(false);
         return;
@@ -114,6 +114,45 @@ export function useLeagueDetail(id, league) {
     setPullStatus('Saved locally');
     setLoading(false);
   }, [id, league?.lgurl]);
+
+  const pullSeason = useCallback(
+    async (year) => {
+      if (!Number.isInteger(year) || year < 1900 || year > 2200) {
+        throw new Error('Enter a valid 4-digit season year.');
+      }
+      setLoading(true);
+      setErrors({});
+      const cached = await loadAllCached(id);
+      const next = {};
+      for (const [ep, entry] of Object.entries(cached)) {
+        if (ep === 'ratings') continue;
+        next[ep] = entry.data;
+      }
+      try {
+        for (const ep of ['playerbatstatsv2', 'playerpitchstatsv2', 'playerfieldstatsv2']) {
+          setPullStatus(`Pulling ${ep} ${year}`);
+          const response = await fetchEndpointRaw(league, ep, { year });
+          const key = statKey(ep, year);
+          next[key] = response.data;
+          await saveCached(id, key, response.data, response.text);
+          if (!aliveRef.current) return;
+          setData({ ...next });
+        }
+        setPulledAt(new Date());
+        setPullStatus('Saved locally');
+      } catch (err) {
+        if (!aliveRef.current) return;
+        setErrors({ season: err.message });
+        throw err;
+      } finally {
+        if (aliveRef.current) {
+          setLoading(false);
+          setPullStatus(null);
+        }
+      }
+    },
+    [id, league?.lgurl]
+  );
 
   const pullRatings = useCallback(async () => {
     const bridge = typeof window !== 'undefined' ? window.statsplusDesktop : null;
@@ -212,6 +251,7 @@ export function useLeagueDetail(id, league) {
     pulledAt,
     pullStatus,
     pull,
+    pullSeason,
     ratings,
     ratingsStatus,
     ratingsError,

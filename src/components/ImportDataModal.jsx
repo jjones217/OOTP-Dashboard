@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 // Manual data import: for when the pull queue hits StatsPlus's rate
 // limiter. The user opens an endpoint URL directly in their own browser
@@ -19,6 +19,18 @@ export default function ImportDataModal({ endpoints, onImport, onClose }) {
 
   const selected = endpoints.find((e) => e.value === endpoint);
   const url = selected?.urlFor ? selected.urlFor(selected.needsYear ? year : undefined) : null;
+
+  const commandFor = (shell, requestUrl) => {
+    if (!requestUrl || requestUrl.includes('<')) return '';
+    if (shell === 'powershell') {
+      return `Invoke-WebRequest -UseBasicParsing "${requestUrl}" | Select-Object -ExpandProperty Content`;
+    }
+    return `curl -L "${requestUrl}"`;
+  };
+
+  useEffect(() => {
+    setCommand(commandFor(shellName, url));
+  }, [shellName, url]);
 
   const handleEndpointChange = (value) => {
     setEndpoint(value);

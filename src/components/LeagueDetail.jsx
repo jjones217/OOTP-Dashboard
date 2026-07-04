@@ -45,6 +45,13 @@ function detailImportEndpoints(league, seasonYear) {
       urlFor: (year) => `${base}/playerpitchstatsv2/?year=${year || '<season year>'}`,
     },
     {
+      value: 'playerfieldstatsv2',
+      label: 'Player fielding (playerfieldstatsv2)',
+      needsYear: true,
+      defaultYear: seasonYear || '',
+      urlFor: (year) => `${base}/playerfieldstatsv2/?year=${year || '<season year>'}`,
+    },
+    {
       value: 'ratings',
       label: 'Ratings (ratings)',
       urlFor: () => `${base}/ratings/`,
@@ -181,6 +188,7 @@ export default function LeagueDetail({ id, league, onBack }) {
     pulledAt,
     pullStatus,
     pull,
+    pullSeason,
     ratings,
     ratingsStatus,
     ratingsError,
@@ -195,6 +203,8 @@ export default function LeagueDetail({ id, league, onBack }) {
   const [roleFilter, setRoleFilter] = useState('all');
   const [selectedId, setSelectedId] = useState(null);
   const [showImport, setShowImport] = useState(false);
+  const [pullYear, setPullYear] = useState('');
+  const [seasonPullError, setSeasonPullError] = useState(null);
 
   const names = useMemo(() => teamNamesFromLgdata(data.lgdata), [data.lgdata]);
   const seasonYear = useMemo(() => extractYear(data.date), [data.date]);
@@ -204,9 +214,10 @@ export default function LeagueDetail({ id, league, onBack }) {
   // of years actually available, and which one the Players tab is showing.
   const batYears = useMemo(() => collectYears(data, 'playerbatstatsv2'), [data]);
   const pitchYears = useMemo(() => collectYears(data, 'playerpitchstatsv2'), [data]);
+  const fieldYears = useMemo(() => collectYears(data, 'playerfieldstatsv2'), [data]);
   const statYears = useMemo(
-    () => [...new Set([...batYears, ...pitchYears])].sort((a, b) => b - a),
-    [batYears, pitchYears]
+    () => [...new Set([...batYears, ...pitchYears, ...fieldYears])].sort((a, b) => b - a),
+    [batYears, pitchYears, fieldYears]
   );
   const [selectedYear, setSelectedYearState] = useState(null);
   const yearPickedManuallyRef = useRef(false);
@@ -240,6 +251,7 @@ export default function LeagueDetail({ id, league, onBack }) {
         players: data.players,
         batstats: data[statKey('playerbatstatsv2', selectedYear)],
         pitchstats: data[statKey('playerpitchstatsv2', selectedYear)],
+        fieldstats: data[statKey('playerfieldstatsv2', selectedYear)],
         ratings,
       }),
     [data, selectedYear, ratings]
@@ -305,6 +317,39 @@ export default function LeagueDetail({ id, league, onBack }) {
             {loading ? 'Pulling…' : '⬇ Pull latest data'}
           </button>
         </div>
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
+        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          Pull player season
+        </span>
+        <input
+          type="number"
+          value={pullYear}
+          onChange={(e) => {
+            setPullYear(e.target.value);
+            setSeasonPullError(null);
+          }}
+          placeholder={seasonYear ? String(seasonYear - 1) : '2052'}
+          className="w-24 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+        />
+        <button
+          onClick={() => {
+            setSeasonPullError(null);
+            pullSeason(Number(pullYear)).catch((err) => setSeasonPullError(err.message));
+          }}
+          disabled={loading || !/^\d{4}$/.test(String(pullYear))}
+          title="Pull batting, pitching, and fielding player stats for this year"
+          className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+        >
+          Pull player data
+        </button>
+        <span className="text-xs text-gray-400 dark:text-gray-500">
+          Saves batting, pitching, and fielding locally for that season.
+        </span>
+        {seasonPullError && (
+          <span className="text-xs text-red-600 dark:text-red-300">{seasonPullError}</span>
+        )}
       </div>
 
       {!hasCache && !loading && (

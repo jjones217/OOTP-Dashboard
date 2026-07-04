@@ -1,5 +1,5 @@
 // Cache keying for season-specific stat endpoints (playerbatstatsv2,
-// playerpitchstatsv2). Each season is stored under its own cache key —
+// playerpitchstatsv2, playerfieldstatsv2). Each season is stored under its own cache key —
 // "<endpoint>:<year>" — so multiple years can be pulled or imported and
 // browsed independently instead of the latest overwriting the rest.
 

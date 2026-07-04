@@ -91,11 +91,11 @@ export function ageOf(row) {
 }
 
 // Merge the per-player endpoints into one record per player id.
-export function buildPlayerIndex({ players, batstats, pitchstats, ratings }) {
+export function buildPlayerIndex({ players, batstats, pitchstats, fieldstats, ratings }) {
   const map = new Map();
   const ensure = (id) => {
     if (!map.has(id)) {
-      map.set(id, { id, info: null, bat: null, pitch: null, rating: null });
+      map.set(id, { id, info: null, bat: null, pitch: null, field: null, rating: null });
     }
     return map.get(id);
   };
@@ -115,6 +115,10 @@ export function buildPlayerIndex({ players, batstats, pitchstats, ratings }) {
     const id = playerIdOf(row);
     if (id) ensure(id).pitch = row;
   }
+  for (const row of asRows(fieldstats)) {
+    const id = playerIdOf(row);
+    if (id) ensure(id).field = row;
+  }
   for (const row of asRows(ratings)) {
     const id = playerIdOf(row);
     if (id) ensure(id).rating = row;
@@ -122,18 +126,18 @@ export function buildPlayerIndex({ players, batstats, pitchstats, ratings }) {
 
   const list = [];
   for (const p of map.values()) {
-    const source = p.info || p.rating || p.bat || p.pitch;
-    const name = [p.info, p.rating, p.bat, p.pitch]
+    const source = p.info || p.rating || p.bat || p.pitch || p.field;
+    const name = [p.info, p.rating, p.bat, p.pitch, p.field]
       .map((r) => r && playerNameOf(r))
       .find(Boolean);
     if (!name) continue;
     list.push({
       ...p,
       name,
-      position: [p.info, p.rating, p.bat, p.pitch]
+      position: [p.info, p.rating, p.bat, p.pitch, p.field]
         .map((r) => r && positionOf(r))
         .find(Boolean),
-      teamId: [p.info, p.rating, p.bat, p.pitch]
+      teamId: [p.info, p.rating, p.bat, p.pitch, p.field]
         .map((r) => r && teamIdOf(r))
         .find(Boolean),
       age: [p.info, p.rating].map((r) => r && ageOf(r)).find((v) => v != null),
