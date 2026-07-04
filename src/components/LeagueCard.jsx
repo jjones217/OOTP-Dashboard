@@ -4,6 +4,7 @@ import ImportDataModal from './ImportDataModal';
 import {
   pickPlayerStats,
   withPitchingRates,
+  withBattingRates,
   BAT_STAT_KEYS,
   PITCH_STAT_KEYS,
 } from '../lib/players';
@@ -65,7 +66,9 @@ export default function LeagueCard({ id, league, onEdit, onRemove, onOpen }) {
   const [showImport, setShowImport] = useState(false);
 
   const statRow =
-    statView === 'pitching' ? withPitchingRates(data?.pitching) : data?.batting;
+    statView === 'pitching'
+      ? withPitchingRates(data?.pitching)
+      : withBattingRates(data?.batting);
   const stats = pickPlayerStats(
     statRow,
     statView === 'batting' ? BAT_STAT_KEYS : PITCH_STAT_KEYS

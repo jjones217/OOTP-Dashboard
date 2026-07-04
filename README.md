@@ -76,9 +76,10 @@ Two things are special:
   "Total" split. The app filters to that split everywhere automatically
   (`filterSeasonTotals` in `src/api/statsplus.js`); endpoints without a
   `split_id` column pass through unfiltered.
-- Real `playerpitchstatsv2` columns don't include `era`/`whip` — they're
-  computed from `er`/`ip`/`bb`/`ha` (`withPitchingRates` in
-  `src/lib/players.js`) whenever the raw columns aren't present.
+- Real `playerpitchstatsv2`/`playerbatstatsv2` columns don't include
+  `era`/`whip`/`avg`/`obp`/`slg`/`ops` — they're computed
+  (`withPitchingRates`/`withBattingRates` in `src/lib/players.js`)
+  whenever the raw columns aren't present.
 
 Rate-limited? Every card and the league detail view have a **📋 Import
 manually** button: open the endpoint URL yourself (a plain browser

@@ -255,6 +255,53 @@ export function withPitchingRates(row) {
   return out;
 }
 
+// Format a batting rate the traditional way: ".300", not "0.300" — but
+// keep the leading digit for anything >= 1 (some OPS values are).
+function fmtRate3(n) {
+  if (!Number.isFinite(n)) return undefined;
+  const s = n.toFixed(3);
+  return n < 1 ? s.replace(/^0/, '') : s;
+}
+
+// Real playerbatstatsv2/teambatstats columns (confirmed from live data)
+// don't include avg/obp/slg/ops either — compute them from
+// ab/h/d/t/hr/bb/hp/sf when they're missing.
+export function withBattingRates(row) {
+  if (!row) return row;
+  const lower = {};
+  for (const k of Object.keys(row)) lower[k.toLowerCase()] = k;
+  const get = (name) => (lower[name] !== undefined ? Number(row[lower[name]]) : NaN);
+  const orZero = (n) => (Number.isFinite(n) ? n : 0);
+
+  const ab = get('ab');
+  if (!Number.isFinite(ab) || ab <= 0) return row;
+
+  const h = get('h');
+  const d = orZero(get('d'));
+  const t = orZero(get('t'));
+  const hr = orZero(get('hr'));
+  const bb = orZero(get('bb'));
+  const hp = orZero(get('hp'));
+  const sf = orZero(get('sf'));
+
+  let avgNum, slgNum, obpNum;
+  if (Number.isFinite(h)) {
+    avgNum = h / ab;
+    slgNum = (h + d + 2 * t + 3 * hr) / ab;
+    const obpDenom = ab + bb + hp + sf;
+    if (obpDenom > 0) obpNum = (h + bb + hp) / obpDenom;
+  }
+
+  const out = { ...row };
+  if (lower.avg === undefined && avgNum !== undefined) out.avg = fmtRate3(avgNum);
+  if (lower.obp === undefined && obpNum !== undefined) out.obp = fmtRate3(obpNum);
+  if (lower.slg === undefined && slgNum !== undefined) out.slg = fmtRate3(slgNum);
+  if (lower.ops === undefined && obpNum !== undefined && slgNum !== undefined) {
+    out.ops = fmtRate3(obpNum + slgNum);
+  }
+  return out;
+}
+
 // A couple of raw column names read confusingly as a bare uppercase
 // label (e.g. StatsPlus uses "s" for saves, not "sv").
 const STAT_LABEL_OVERRIDES = { s: 'SV' };
@@ -276,5 +323,5 @@ export function pickPlayerStats(row, preferredKeys) {
     .map(([k, v]) => [label(k.toLowerCase()), v]);
 }
 
-export const BAT_STAT_KEYS = ['g', 'ab', 'r', 'h', 'hr', 'rbi', 'sb', 'avg', 'obp', 'slg', 'ops'];
+export const BAT_STAT_KEYS = ['g', 'ab', 'r', 'h', 'hr', 'rbi', 'sb', 'bb', 'k', 'avg', 'obp', 'slg', 'ops'];
 export const PITCH_STAT_KEYS = ['g', 'gs', 'w', 'l', 's', 'ip', 'ha', 'er', 'bb', 'k', 'era', 'whip'];

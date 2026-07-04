@@ -11,6 +11,7 @@ import {
   buildPlayerIndex,
   pickPlayerStats,
   withPitchingRates,
+  withBattingRates,
   BAT_STAT_KEYS,
   PITCH_STAT_KEYS,
 } from '../lib/players';
@@ -568,6 +569,7 @@ export default function LeagueDetail({ id, league, onBack }) {
           <TeamStatsTable
             title="Team batting"
             data={data.teambatstats}
+            transformRow={withBattingRates}
             names={names}
             keys={BAT_STAT_KEYS}
             myTeamId={league.teamId}

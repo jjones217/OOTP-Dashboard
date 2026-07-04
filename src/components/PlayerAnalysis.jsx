@@ -7,6 +7,7 @@ import {
   compositeScore,
   pickPlayerStats,
   withPitchingRates,
+  withBattingRates,
   BAT_STAT_KEYS,
   PITCH_STAT_KEYS,
 } from '../lib/players';
@@ -145,7 +146,7 @@ export default function PlayerAnalysis({
       <div className="mt-4 space-y-3">
         <StatLine
           title={statsYear ? `Batting stats (${statsYear})` : 'Batting stats'}
-          row={player.bat}
+          row={withBattingRates(player.bat)}
           keys={BAT_STAT_KEYS}
         />
         <StatLine
