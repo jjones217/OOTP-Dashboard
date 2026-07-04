@@ -12,8 +12,10 @@ const desktopBridge =
 // data is cached locally after a pull, so speed matters less than avoiding
 // a 429 cooldown.
 const DEFAULT_REQUEST_GAP_MS = 2500;
+const DEFAULT_RATE_LIMIT_COOLDOWN_MS = 10 * 60 * 1000;
 const RETRYABLE_STATUSES = new Set([502, 503, 504]);
 let lastRequestAt = 0;
+let cooldownUntil = 0;
 let queueChain = Promise.resolve();
 
 function requestGapMs() {
@@ -41,7 +43,11 @@ function retryAfterMs(value) {
 
 function queued(fn) {
   const run = async () => {
-    const wait = Math.max(0, lastRequestAt + requestGapMs() - Date.now());
+    const wait = Math.max(
+      0,
+      lastRequestAt + requestGapMs() - Date.now(),
+      cooldownUntil - Date.now()
+    );
     if (wait > 0) await sleep(wait);
     try {
       return await fn();
@@ -119,6 +125,10 @@ export async function fetchEndpointRaw(league, endpoint, extraParams = {}) {
     const retryMs = retryAfterMs(retryAfter);
     if (response.status === 429 && retryMs !== null) {
       message += ` Retry after about ${Math.ceil(retryMs / 1000)} seconds.`;
+      cooldownUntil = Math.max(cooldownUntil, Date.now() + retryMs);
+    } else if (response.status === 429) {
+      message += ' The app will pause StatsPlus pulls for 10 minutes.';
+      cooldownUntil = Math.max(cooldownUntil, Date.now() + DEFAULT_RATE_LIMIT_COOLDOWN_MS);
     }
     const err = new Error(message);
     err.status = response.status;

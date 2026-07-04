@@ -79,6 +79,10 @@ export function useLeagueDetail(id, league) {
         await saveCached(id, key, response.data, response.text);
       } catch (err) {
         errs[ep] = err.message;
+        if (err.status === 429) {
+          setPullStatus('Rate limited; pull paused');
+          return false;
+        }
       }
       if (!aliveRef.current) return false;
       setData({ ...raw });
