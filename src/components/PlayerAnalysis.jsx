@@ -61,6 +61,7 @@ export default function PlayerAnalysis({
   teamName,
   ratingsStatus,
   onLoadRatings,
+  statsYear,
 }) {
   if (!player) {
     return (
@@ -141,8 +142,16 @@ export default function PlayerAnalysis({
       )}
 
       <div className="mt-4 space-y-3">
-        <StatLine title="Batting stats" row={player.bat} keys={BAT_STAT_KEYS} />
-        <StatLine title="Pitching stats" row={player.pitch} keys={PITCH_STAT_KEYS} />
+        <StatLine
+          title={statsYear ? `Batting stats (${statsYear})` : 'Batting stats'}
+          row={player.bat}
+          keys={BAT_STAT_KEYS}
+        />
+        <StatLine
+          title={statsYear ? `Pitching stats (${statsYear})` : 'Pitching stats'}
+          row={player.pitch}
+          keys={PITCH_STAT_KEYS}
+        />
       </div>
     </div>
   );

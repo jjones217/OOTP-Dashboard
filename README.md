@@ -66,6 +66,18 @@ Two things are special:
   and requires being signed in and linked to a team in the league. It's
   triggered manually from the Players tab ("Pull ratings") and cached
   like everything else, so it doesn't need to be re-run every session.
+- **`playerbatstatsv2`/`playerpitchstatsv2` are cached per season**
+  (`playerbatstatsv2:2052`, etc.), so multiple years can be pulled or
+  imported without one overwriting another. The Players tab has a season
+  dropdown once more than one year is cached.
+
+Rate-limited? Every card and the league detail view have a **📋 Import
+manually** button: open the endpoint URL yourself (a plain browser
+request isn't subject to this app's request queue), copy the response,
+and paste it in — it's parsed and cached exactly like a pull. Useful for
+backfilling several seasons of stats at once, since nothing stops you
+from opening `.../playerbatstatsv2/?year=2048` through `?year=2052` one
+at a time in your own browser and importing each.
 
 StatsPlus rate-limits aggressively — all requests go through a queue that
 spaces them out, but repeated manual testing can still trigger a 429 that

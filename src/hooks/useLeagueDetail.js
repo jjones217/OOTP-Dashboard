@@ -6,6 +6,9 @@ import {
   parseResponseText,
 } from '../api/statsplus';
 import { loadAllCached, saveCached } from '../lib/dataStore';
+import { statKey } from '../lib/statYears';
+
+const YEAR_KEYED_ENDPOINTS = new Set(['playerbatstatsv2', 'playerpitchstatsv2']);
 
 // Endpoints per https://wiki.statsplus.net/web-tools/statsplus-api.
 // The player stat endpoints need the current season as ?year=, which comes
@@ -63,10 +66,14 @@ export function useLeagueDetail(id, league) {
     const raw = {};
     const errs = {};
 
-    const grab = async (ep, params) => {
+    // `cacheKey` lets the two player-stat endpoints land under a
+    // per-season key (playerbatstatsv2:2052) instead of overwriting a
+    // single flat slot, so multiple pulled/imported seasons coexist.
+    const grab = async (ep, params, cacheKey) => {
+      const key = cacheKey || ep;
       try {
-        raw[ep] = await fetchEndpoint(league, ep, params);
-        await saveCached(id, ep, raw[ep]);
+        raw[key] = await fetchEndpoint(league, ep, params);
+        await saveCached(id, key, raw[key]);
       } catch (err) {
         errs[ep] = err.message;
       }
@@ -89,7 +96,7 @@ export function useLeagueDetail(id, league) {
       }
     }
     for (const ep of ['playerbatstatsv2', 'playerpitchstatsv2']) {
-      if (!(await grab(ep, year ? { year } : undefined))) {
+      if (!(await grab(ep, year ? { year } : undefined, statKey(ep, year)))) {
         setLoading(false);
         return;
       }
@@ -147,13 +154,18 @@ export function useLeagueDetail(id, league) {
   // opens the endpoint URL in their own browser, copies the response,
   // and pastes it here — it's parsed and cached exactly like a pull.
   const importEndpoint = useCallback(
-    async (endpoint, rawText) => {
+    async (endpoint, rawText, year) => {
       if (endpoint === 'ratings' && /still in progress|^Request received/i.test(rawText.trim())) {
         throw new Error(
           'This looks like the "job in progress" placeholder, not the final ' +
             'CSV. Reload the ratings URL after ~60-90 seconds and paste what ' +
             'it shows then.'
         );
+      }
+      if (YEAR_KEYED_ENDPOINTS.has(endpoint)) {
+        if (!Number.isInteger(year) || year < 1900 || year > 2200) {
+          throw new Error('Enter a valid 4-digit season year before saving.');
+        }
       }
       const parsed = parseResponseText(rawText);
 
@@ -165,7 +177,11 @@ export function useLeagueDetail(id, league) {
         return Array.isArray(parsed) ? parsed.length : null;
       }
 
-      await saveCached(id, endpoint, parsed);
+      const cacheKey = YEAR_KEYED_ENDPOINTS.has(endpoint)
+        ? statKey(endpoint, year)
+        : endpoint;
+
+      await saveCached(id, cacheKey, parsed);
       const cached = await loadAllCached(id);
       const raw = {};
       let latest = null;

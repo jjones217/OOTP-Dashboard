@@ -5,11 +5,19 @@ import ImportDataModal from './ImportDataModal';
 function overviewImportEndpoints(league) {
   const base = `https://statsplus.net/${league.lgurl}/api`;
   return [
-    { value: 'date', label: 'Sim date (date)', url: `${base}/date/` },
-    { value: 'exports', label: 'Exports (exports)', url: `${base}/exports/` },
-    { value: 'teams', label: 'Teams (teams)', url: `${base}/teams/` },
-    { value: 'teambatstats', label: 'Team batting (teambatstats)', url: `${base}/teambatstats/` },
-    { value: 'teampitchstats', label: 'Team pitching (teampitchstats)', url: `${base}/teampitchstats/` },
+    { value: 'date', label: 'Sim date (date)', urlFor: () => `${base}/date/` },
+    { value: 'exports', label: 'Exports (exports)', urlFor: () => `${base}/exports/` },
+    { value: 'teams', label: 'Teams (teams)', urlFor: () => `${base}/teams/` },
+    {
+      value: 'teambatstats',
+      label: 'Team batting (teambatstats)',
+      urlFor: () => `${base}/teambatstats/`,
+    },
+    {
+      value: 'teampitchstats',
+      label: 'Team pitching (teampitchstats)',
+      urlFor: () => `${base}/teampitchstats/`,
+    },
   ];
 }
 

@@ -1,33 +1,45 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLeagueDetail } from '../hooks/useLeagueDetail';
 import { findTeamRow, extractTeamName, extractRecord, extractYear } from '../api/statsplus';
 import { buildPlayerIndex, pickPlayerStats, BAT_STAT_KEYS, PITCH_STAT_KEYS } from '../lib/players';
+import { statKey, collectYears } from '../lib/statYears';
 import PlayerAnalysis from './PlayerAnalysis';
 import ImportDataModal from './ImportDataModal';
 
 function detailImportEndpoints(league, seasonYear) {
   const base = `https://statsplus.net/${league.lgurl}/api`;
-  const year = seasonYear || '<season year>';
   return [
-    { value: 'date', label: 'Sim date (date)', url: `${base}/date/` },
-    { value: 'teams', label: 'Teams (teams)', url: `${base}/teams/` },
-    { value: 'players', label: 'Players (players)', url: `${base}/players/` },
-    { value: 'teambatstats', label: 'Team batting (teambatstats)', url: `${base}/teambatstats/` },
-    { value: 'teampitchstats', label: 'Team pitching (teampitchstats)', url: `${base}/teampitchstats/` },
+    { value: 'date', label: 'Sim date (date)', urlFor: () => `${base}/date/` },
+    { value: 'teams', label: 'Teams (teams)', urlFor: () => `${base}/teams/` },
+    { value: 'players', label: 'Players (players)', urlFor: () => `${base}/players/` },
+    {
+      value: 'teambatstats',
+      label: 'Team batting (teambatstats)',
+      urlFor: () => `${base}/teambatstats/`,
+    },
+    {
+      value: 'teampitchstats',
+      label: 'Team pitching (teampitchstats)',
+      urlFor: () => `${base}/teampitchstats/`,
+    },
     {
       value: 'playerbatstatsv2',
       label: 'Player batting (playerbatstatsv2)',
-      url: `${base}/playerbatstatsv2/?year=${year}`,
+      needsYear: true,
+      defaultYear: seasonYear || '',
+      urlFor: (year) => `${base}/playerbatstatsv2/?year=${year || '<season year>'}`,
     },
     {
       value: 'playerpitchstatsv2',
       label: 'Player pitching (playerpitchstatsv2)',
-      url: `${base}/playerpitchstatsv2/?year=${year}`,
+      needsYear: true,
+      defaultYear: seasonYear || '',
+      urlFor: (year) => `${base}/playerpitchstatsv2/?year=${year || '<season year>'}`,
     },
     {
       value: 'ratings',
       label: 'Ratings (ratings)',
-      url: `${base}/ratings/`,
+      urlFor: () => `${base}/ratings/`,
       hint:
         'Ratings is an async job on StatsPlus\'s side — visit this URL, ' +
         'wait ~60-90 seconds, reload, and paste the CSV it shows then (not ' +
@@ -231,19 +243,55 @@ export default function LeagueDetail({ id, league, onBack }) {
   const [showImport, setShowImport] = useState(false);
 
   const names = useMemo(() => teamNameById(data.teams), [data.teams]);
+  const seasonYear = useMemo(() => extractYear(data.date), [data.date]);
+
+  // Player batting/pitching stats are cached per season (playerbatstatsv2:
+  // <year>), so multiple pulled/imported years coexist. This is the list
+  // of years actually available, and which one the Players tab is showing.
+  const batYears = useMemo(() => collectYears(data, 'playerbatstatsv2'), [data]);
+  const pitchYears = useMemo(() => collectYears(data, 'playerpitchstatsv2'), [data]);
+  const statYears = useMemo(
+    () => [...new Set([...batYears, ...pitchYears])].sort((a, b) => b - a),
+    [batYears, pitchYears]
+  );
+  const [selectedYear, setSelectedYearState] = useState(null);
+  const yearPickedManuallyRef = useRef(false);
+  const pickYear = (y) => {
+    yearPickedManuallyRef.current = true;
+    setSelectedYearState(y);
+  };
+  // Auto-follows the newest available season (or the in-game current
+  // season, if cached) as more years get pulled or imported — right up
+  // until the user manually picks one from the dropdown, at which point
+  // their choice sticks even as further years are added.
+  useEffect(() => {
+    if (statYears.length === 0) {
+      if (selectedYear !== null) setSelectedYearState(null);
+      return;
+    }
+    if (
+      yearPickedManuallyRef.current &&
+      selectedYear !== null &&
+      statYears.includes(selectedYear)
+    ) {
+      return;
+    }
+    const preferred = statYears.includes(seasonYear) ? seasonYear : statYears[0];
+    if (preferred !== selectedYear) setSelectedYearState(preferred);
+  }, [statYears, seasonYear]);
+
   const players = useMemo(
     () =>
       buildPlayerIndex({
         players: data.players,
-        batstats: data.playerbatstatsv2,
-        pitchstats: data.playerpitchstatsv2,
+        batstats: data[statKey('playerbatstatsv2', selectedYear)],
+        pitchstats: data[statKey('playerpitchstatsv2', selectedYear)],
         ratings,
       }),
-    [data.players, data.playerbatstatsv2, data.playerpitchstatsv2, ratings]
+    [data, selectedYear, ratings]
   );
   const allRatingRows = useMemo(() => asRows(ratings), [ratings]);
   const standings = useMemo(() => buildStandings(data.teams), [data.teams]);
-  const seasonYear = useMemo(() => extractYear(data.date), [data.date]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -369,6 +417,20 @@ export default function LeagueDetail({ id, league, onBack }) {
               <option value="batters">Batters</option>
               <option value="pitchers">Pitchers</option>
             </select>
+            {statYears.length > 0 && (
+              <select
+                value={selectedYear ?? ''}
+                onChange={(e) => pickYear(Number(e.target.value))}
+                title="Stats season — pull or import more years to add to this list"
+                className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+              >
+                {statYears.map((y) => (
+                  <option key={y} value={y}>
+                    {y} stats
+                  </option>
+                ))}
+              </select>
+            )}
             <span className="text-xs text-gray-400 dark:text-gray-500">
               {filtered.length} players
             </span>
@@ -481,6 +543,7 @@ export default function LeagueDetail({ id, league, onBack }) {
               teamName={selected ? names[String(selected.teamId)] : null}
               ratingsStatus={ratingsStatus}
               onLoadRatings={pullRatings}
+              statsYear={selectedYear}
             />
           </div>
         </>
@@ -510,7 +573,7 @@ export default function LeagueDetail({ id, league, onBack }) {
 
       {showImport && (
         <ImportDataModal
-          endpoints={detailImportEndpoints(league, seasonYear)}
+          endpoints={detailImportEndpoints(league, selectedYear || seasonYear)}
           onImport={importEndpoint}
           onClose={() => setShowImport(false)}
         />

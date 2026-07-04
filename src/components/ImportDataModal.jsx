@@ -8,10 +8,19 @@ import { useState } from 'react';
 export default function ImportDataModal({ endpoints, onImport, onClose }) {
   const [endpoint, setEndpoint] = useState(endpoints[0].value);
   const [text, setText] = useState('');
+  const [year, setYear] = useState(endpoints[0].defaultYear ?? '');
   const [status, setStatus] = useState(null); // null | 'saving' | 'done' | 'error'
   const [message, setMessage] = useState('');
 
   const selected = endpoints.find((e) => e.value === endpoint);
+  const url = selected?.urlFor ? selected.urlFor(selected.needsYear ? year : undefined) : null;
+
+  const handleEndpointChange = (value) => {
+    setEndpoint(value);
+    setStatus(null);
+    const next = endpoints.find((e) => e.value === value);
+    setYear(next?.defaultYear ?? '');
+  };
 
   const handleFile = (e) => {
     const file = e.target.files?.[0];
@@ -25,7 +34,11 @@ export default function ImportDataModal({ endpoints, onImport, onClose }) {
     setStatus('saving');
     setMessage('');
     try {
-      const count = await onImport(endpoint, text);
+      const count = await onImport(
+        endpoint,
+        text,
+        selected.needsYear ? Number(year) : undefined
+      );
       setStatus('done');
       setMessage(typeof count === 'number' ? `Saved — ${count} rows.` : 'Saved.');
       setText('');
@@ -35,12 +48,18 @@ export default function ImportDataModal({ endpoints, onImport, onClose }) {
     }
   };
 
+  const yearInvalid =
+    selected.needsYear && (!year || !/^\d{4}$/.test(String(year)));
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Import data manually"
         className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl dark:bg-gray-800"
         onClick={(e) => e.stopPropagation()}
       >
@@ -58,10 +77,7 @@ export default function ImportDataModal({ endpoints, onImport, onClose }) {
         </label>
         <select
           value={endpoint}
-          onChange={(e) => {
-            setEndpoint(e.target.value);
-            setStatus(null);
-          }}
+          onChange={(e) => handleEndpointChange(e.target.value)}
           className="mb-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
         >
           {endpoints.map((e) => (
@@ -70,9 +86,32 @@ export default function ImportDataModal({ endpoints, onImport, onClose }) {
             </option>
           ))}
         </select>
-        {selected?.url && (
+
+        {selected?.needsYear && (
+          <div className="mb-2">
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Season year
+            </label>
+            <input
+              type="number"
+              value={year}
+              onChange={(e) => {
+                setYear(e.target.value);
+                setStatus(null);
+              }}
+              placeholder="e.g. 2052"
+              className="w-32 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+            />
+            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+              This tags which season the pasted stats belong to, so multiple
+              years can be imported and browsed separately.
+            </p>
+          </div>
+        )}
+
+        {url && (
           <p className="mb-3 break-all text-xs text-gray-400 dark:text-gray-500">
-            URL: <code>{selected.url}</code>
+            URL: <code>{url}</code>
           </p>
         )}
         {selected?.hint && (
@@ -124,7 +163,8 @@ export default function ImportDataModal({ endpoints, onImport, onClose }) {
           </button>
           <button
             onClick={handleImport}
-            disabled={!text.trim() || status === 'saving'}
+            disabled={!text.trim() || status === 'saving' || yearInvalid}
+            title={yearInvalid ? 'Enter a valid 4-digit season year first' : undefined}
             className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
             {status === 'saving' ? 'Saving…' : 'Save to cache'}
