@@ -60,7 +60,7 @@ function ExportBadge({ exportStatus }) {
 }
 
 export default function LeagueCard({ id, league, onEdit, onRemove, onOpen }) {
-  const { data, hasCache, loading, error, pulledAt, pull, importEndpoint } =
+  const { data, hasCache, loading, error, pulledAt, pullStatus, pull, importEndpoint } =
     useLeagueData(id, league);
   const [statView, setStatView] = useState('batting');
   const [showImport, setShowImport] = useState(false);
@@ -150,7 +150,7 @@ export default function LeagueCard({ id, league, onEdit, onRemove, onOpen }) {
 
       {!hasCache && loading && (
         <div className="py-6 text-center text-sm text-gray-400 dark:text-gray-500">
-          Pulling data from StatsPlus…
+          {pullStatus || 'Pulling data from StatsPlus…'}
         </div>
       )}
 
@@ -185,7 +185,7 @@ export default function LeagueCard({ id, league, onEdit, onRemove, onOpen }) {
               </select>
               {pulledAt && (
                 <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                  Pulled {pulledAt.toLocaleTimeString()}
+                  {loading && pullStatus ? pullStatus : `Pulled ${pulledAt.toLocaleTimeString()}`}
                 </span>
               )}
             </div>

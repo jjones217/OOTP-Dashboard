@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import {
-  fetchEndpoint,
+  fetchEndpointRaw,
   parseResponseText,
   extractSimDate,
   findTeamRow,
@@ -37,6 +37,7 @@ export function useLeagueData(id, league) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [pulledAt, setPulledAt] = useState(null);
+  const [pullStatus, setPullStatus] = useState(null);
   const aliveRef = useRef(true);
 
   useEffect(() => {
@@ -68,18 +69,24 @@ export function useLeagueData(id, league) {
     try {
       const raw = {};
       for (const ep of ENDPOINTS) {
-        raw[ep] = await fetchEndpoint(league, ep);
-        await saveCached(id, ep, raw[ep]);
+        setPullStatus(`Pulling ${ep}`);
+        const response = await fetchEndpointRaw(league, ep);
+        raw[ep] = response.data;
+        await saveCached(id, ep, response.data, response.text);
         if (!aliveRef.current) return;
         setData(deriveOverview(raw, league.teamId));
       }
       setPulledAt(new Date());
       setHasCache(true);
+      setPullStatus('Saved locally');
     } catch (err) {
       if (!aliveRef.current) return;
       setError(err.message);
     } finally {
-      if (aliveRef.current) setLoading(false);
+      if (aliveRef.current) {
+        setLoading(false);
+        setPullStatus(null);
+      }
     }
   }, [id, league?.lgurl, league?.teamId]);
 
@@ -89,7 +96,7 @@ export function useLeagueData(id, league) {
   const importEndpoint = useCallback(
     async (endpoint, rawText) => {
       const parsed = parseResponseText(rawText);
-      await saveCached(id, endpoint, parsed);
+      await saveCached(id, endpoint, parsed, rawText);
       const cached = await loadAllCached(id);
       const raw = {};
       let latest = null;
@@ -105,5 +112,5 @@ export function useLeagueData(id, league) {
     [id, league?.teamId]
   );
 
-  return { data, hasCache, loading, error, pulledAt, pull, importEndpoint };
+  return { data, hasCache, loading, error, pulledAt, pullStatus, pull, importEndpoint };
 }

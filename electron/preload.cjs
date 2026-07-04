@@ -20,7 +20,7 @@ contextBridge.exposeInMainWorld('leagueStore', {
 // from StatsPlus and writes the result here.
 contextBridge.exposeInMainWorld('localData', {
   loadAll: (leagueId) => ipcRenderer.invoke('data-load-all', leagueId),
-  save: (leagueId, endpoint, data) =>
-    ipcRenderer.invoke('data-save', { leagueId, endpoint, data }),
+  save: (leagueId, endpoint, data, rawText) =>
+    ipcRenderer.invoke('data-save', { leagueId, endpoint, data, rawText }),
   clear: (leagueId) => ipcRenderer.invoke('data-clear', leagueId),
 });

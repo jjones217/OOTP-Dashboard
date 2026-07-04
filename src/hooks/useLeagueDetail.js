@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import {
-  fetchEndpoint,
+  fetchEndpointRaw,
   extractYear,
   parseCsv,
   parseResponseText,
@@ -25,6 +25,7 @@ export function useLeagueDetail(id, league) {
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [pulledAt, setPulledAt] = useState(null);
+  const [pullStatus, setPullStatus] = useState(null);
 
   const [ratings, setRatings] = useState(null);
   const [ratingsStatus, setRatingsStatus] = useState('idle'); // idle|running|done|error
@@ -72,8 +73,10 @@ export function useLeagueDetail(id, league) {
     const grab = async (ep, params, cacheKey) => {
       const key = cacheKey || ep;
       try {
-        raw[key] = await fetchEndpoint(league, ep, params);
-        await saveCached(id, key, raw[key]);
+        setPullStatus(`Pulling ${ep}`);
+        const response = await fetchEndpointRaw(league, ep, params);
+        raw[key] = response.data;
+        await saveCached(id, key, response.data, response.text);
       } catch (err) {
         errs[ep] = err.message;
       }
@@ -104,6 +107,7 @@ export function useLeagueDetail(id, league) {
 
     if (!aliveRef.current) return;
     setPulledAt(new Date());
+    setPullStatus('Saved locally');
     setLoading(false);
   }, [id, league?.lgurl]);
 
@@ -138,7 +142,7 @@ export function useLeagueDetail(id, league) {
         setRatingsError('Ratings job returned no data.');
         return;
       }
-      await saveCached(id, 'ratings', rows);
+      await saveCached(id, 'ratings', rows, body);
       if (!aliveRef.current) return;
       setRatings(rows);
       setRatingsStatus('done');
@@ -170,7 +174,7 @@ export function useLeagueDetail(id, league) {
       const parsed = parseResponseText(rawText);
 
       if (endpoint === 'ratings') {
-        await saveCached(id, 'ratings', parsed);
+        await saveCached(id, 'ratings', parsed, rawText);
         setRatings(parsed);
         setRatingsStatus('done');
         setRatingsPulledAt(new Date());
@@ -181,7 +185,7 @@ export function useLeagueDetail(id, league) {
         ? statKey(endpoint, year)
         : endpoint;
 
-      await saveCached(id, cacheKey, parsed);
+      await saveCached(id, cacheKey, parsed, rawText);
       const cached = await loadAllCached(id);
       const raw = {};
       let latest = null;
@@ -202,6 +206,7 @@ export function useLeagueDetail(id, league) {
     errors,
     loading,
     pulledAt,
+    pullStatus,
     pull,
     ratings,
     ratingsStatus,

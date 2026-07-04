@@ -179,6 +179,7 @@ export default function LeagueDetail({ id, league, onBack }) {
     errors,
     loading,
     pulledAt,
+    pullStatus,
     pull,
     ratings,
     ratingsStatus,
@@ -285,7 +286,7 @@ export default function LeagueDetail({ id, league, onBack }) {
         <div className="flex items-center gap-3">
           {pulledAt && (
             <span className="text-xs text-gray-400 dark:text-gray-500">
-              Last pulled {pulledAt.toLocaleTimeString()}
+              {loading && pullStatus ? pullStatus : `Last pulled ${pulledAt.toLocaleTimeString()}`}
             </span>
           )}
           <button
@@ -311,6 +312,9 @@ export default function LeagueDetail({ id, league, onBack }) {
           <p className="text-sm text-gray-400 dark:text-gray-500">
             No data pulled for this league yet.
           </p>
+          {loading && pullStatus && (
+            <p className="text-xs text-gray-400 dark:text-gray-500">{pullStatus}</p>
+          )}
           <button
             onClick={pull}
             className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700"

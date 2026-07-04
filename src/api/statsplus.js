@@ -8,14 +8,41 @@ const desktopBridge =
 
 // Global request queue: every StatsPlus call across the app is spaced out
 // to avoid tripping the aggressive StatsPlus rate limiter with bursts.
-const REQUEST_GAP_MS = 350;
+// The value is intentionally conservative for the desktop app because all
+// data is cached locally after a pull, so speed matters less than avoiding
+// a 429 cooldown.
+const DEFAULT_REQUEST_GAP_MS = 2500;
+const RETRYABLE_STATUSES = new Set([502, 503, 504]);
 let lastRequestAt = 0;
 let queueChain = Promise.resolve();
 
+function requestGapMs() {
+  try {
+    const saved = Number(localStorage.getItem('ootp-dashboard-request-gap-ms'));
+    if (Number.isFinite(saved)) return Math.min(30_000, Math.max(500, saved));
+  } catch {
+    /* localStorage may be unavailable in tests */
+  }
+  return DEFAULT_REQUEST_GAP_MS;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function retryAfterMs(value) {
+  if (!value) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const date = Date.parse(value);
+  if (Number.isFinite(date)) return Math.max(0, date - Date.now());
+  return null;
+}
+
 function queued(fn) {
   const run = async () => {
-    const wait = Math.max(0, lastRequestAt + REQUEST_GAP_MS - Date.now());
-    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    const wait = Math.max(0, lastRequestAt + requestGapMs() - Date.now());
+    if (wait > 0) await sleep(wait);
     try {
       return await fn();
     } finally {
@@ -62,24 +89,50 @@ export function parseResponseText(text) {
 }
 
 export async function fetchEndpoint(league, endpoint, extraParams = {}) {
-  const { ok, status, text } = await queued(() =>
-    request(league, endpoint, extraParams)
-  );
+  const { data } = await fetchEndpointRaw(league, endpoint, extraParams);
+  return data;
+}
 
-  if (!ok) {
-    let message = `Request failed (${status})`;
+export async function fetchEndpointRaw(league, endpoint, extraParams = {}) {
+  const response = await queued(async () => {
+    let latest;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      latest = await request(league, endpoint, extraParams);
+      if (latest.ok) return latest;
+      if (latest.status === 429) return latest;
+      if (!RETRYABLE_STATUSES.has(latest.status)) return latest;
+      await sleep((attempt + 1) * 5000);
+    }
+    return latest;
+  });
+
+  if (!response.ok) {
+    let message = `Request failed (${response.status})`;
+    let retryAfter = null;
     try {
-      const body = JSON.parse(text);
+      const body = JSON.parse(response.text);
       if (body.error) message = body.error;
+      retryAfter = body.retryAfter || null;
     } catch {
       /* non-JSON error body; keep generic message */
     }
+    const retryMs = retryAfterMs(retryAfter);
+    if (response.status === 429 && retryMs !== null) {
+      message += ` Retry after about ${Math.ceil(retryMs / 1000)} seconds.`;
+    }
     const err = new Error(message);
-    err.status = status;
+    err.status = response.status;
+    err.retryAfter = retryAfter;
+    err.retryAfterMs = retryMs;
     throw err;
   }
 
-  return parseResponseText(text);
+  return {
+    status: response.status,
+    text: response.text,
+    data: parseResponseText(response.text),
+    fetchedAt: Date.now(),
+  };
 }
 
 // CSV parser for StatsPlus CSV endpoints. Handles quoted fields (player

@@ -26,10 +26,10 @@ const ALLOWED_ENDPOINTS = new Set([
 const ALLOWED_PARAMS = ['year', 'split', 'pid', 'lid'];
 const LGURL_RE = /^[a-zA-Z0-9_-]+$/;
 
-const jsonError = (status, error) => ({
+const jsonError = (status, error, extra = {}) => ({
   ok: false,
   status,
-  body: JSON.stringify({ error }),
+  body: JSON.stringify({ error, ...extra }),
 });
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -68,7 +68,11 @@ ipcMain.handle(
     }
 
     if (res.status === 429) {
-      return jsonError(429, 'StatsPlus rate limit hit. Wait a few minutes and try again.');
+      return jsonError(
+        429,
+        'StatsPlus rate limit hit. Wait before pulling more data.',
+        { retryAfter: res.headers.get('Retry-After') }
+      );
     }
     if (!res.ok) {
       return jsonError(res.status, `StatsPlus returned ${res.status}`);
@@ -167,7 +171,7 @@ ipcMain.handle('data-load-all', async (_event, leagueId) => {
   }
 });
 
-ipcMain.handle('data-save', async (_event, { leagueId, endpoint, data }) => {
+ipcMain.handle('data-save', async (_event, { leagueId, endpoint, data, rawText }) => {
   const file = dataFile(leagueId);
   await fs.mkdir(path.dirname(file), { recursive: true });
   let all = {};
@@ -176,7 +180,7 @@ ipcMain.handle('data-save', async (_event, { leagueId, endpoint, data }) => {
   } catch (err) {
     if (err.code !== 'ENOENT') throw err;
   }
-  all[endpoint] = { fetchedAt: Date.now(), data };
+  all[endpoint] = { fetchedAt: Date.now(), data, rawText };
   const tmp = `${file}.tmp`;
   await fs.writeFile(tmp, JSON.stringify(all, null, 2));
   await fs.rename(tmp, file);

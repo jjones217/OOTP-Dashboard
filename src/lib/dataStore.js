@@ -6,7 +6,8 @@
 // desktop this cache is a JSON file per league in the app's per-user data
 // folder; on web it's localStorage.
 //
-// Shape per league: { [endpoint]: { fetchedAt: <ms>, data: <parsed JSON> } }
+// Shape per league:
+// { [endpoint]: { fetchedAt: <ms>, data: <parsed JSON/CSV>, rawText: <string> } }
 
 const bridge = typeof window !== 'undefined' ? window.localData : undefined;
 
@@ -28,10 +29,10 @@ export async function loadAllCached(leagueId) {
   return out;
 }
 
-export async function saveCached(leagueId, endpoint, data) {
-  const entry = { fetchedAt: Date.now(), data };
+export async function saveCached(leagueId, endpoint, data, rawText = null) {
+  const entry = { fetchedAt: Date.now(), data, rawText };
   if (bridge) {
-    await bridge.save(leagueId, endpoint, data);
+    await bridge.save(leagueId, endpoint, data, rawText);
   } else {
     localStorage.setItem(lsPrefix(leagueId) + endpoint, JSON.stringify(entry));
   }
