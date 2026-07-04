@@ -8,14 +8,6 @@ import {
   extractExportStatus,
 } from '../api/statsplus';
 
-const REFRESH_INTERVAL_MS = 10 * 60 * 1000;
-
-// Small delay between endpoint calls to stay friendly with the
-// StatsPlus rate limiter.
-const STAGGER_MS = 400;
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
 export function useLeagueData(league) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -28,14 +20,11 @@ export function useLeagueData(league) {
     setLoading(true);
     setError(null);
     try {
+      // Requests are spaced out by the global queue in api/statsplus.js.
       const dateData = await fetchEndpoint(league, 'date');
-      await sleep(STAGGER_MS);
       const exportsData = await fetchEndpoint(league, 'exports');
-      await sleep(STAGGER_MS);
       const teamsData = await fetchEndpoint(league, 'teams');
-      await sleep(STAGGER_MS);
       const batData = await fetchEndpoint(league, 'teambatstats');
-      await sleep(STAGGER_MS);
       const pitchData = await fetchEndpoint(league, 'teampitchstats');
 
       if (!aliveRef.current) return;
@@ -59,13 +48,13 @@ export function useLeagueData(league) {
     }
   }, [league?.lgurl, league?.teamId, league?.token]);
 
+  // Data loads once when the card mounts; after that, refresh is manual
+  // only (the ↻ button) — no background polling.
   useEffect(() => {
     aliveRef.current = true;
     load();
-    const interval = setInterval(load, REFRESH_INTERVAL_MS);
     return () => {
       aliveRef.current = false;
-      clearInterval(interval);
     };
   }, [load]);
 

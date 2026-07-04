@@ -10,6 +10,12 @@ const ALLOWED_ENDPOINTS = new Set([
   'teams',
   'teambatstats',
   'teampitchstats',
+  'players',
+  'batstats',
+  'pitchstats',
+  'standings',
+  'ratings',
+  'tradeblock',
 ]);
 
 // League URL slugs are simple path segments, e.g. "myleague".

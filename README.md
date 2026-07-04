@@ -2,8 +2,10 @@
 
 Personal GM dashboard for OOTP Online leagues hosted on
 [StatsPlus](https://statsplus.net). Shows sim date, export status, W-L
-record, and team batting/pitching stats for each of your leagues, with data
-refreshed automatically every 10 minutes.
+record, and team batting/pitching stats for each of your leagues, plus a
+per-league view with player browsing, tool-rating radar charts, standings,
+and league-wide team stats. Data refreshes only when you ask (manual
+refresh buttons) — there is no background polling.
 
 Runs two ways from the same codebase:
 

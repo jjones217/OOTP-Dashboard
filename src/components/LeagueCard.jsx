@@ -51,7 +51,7 @@ function ExportBadge({ exportStatus }) {
   );
 }
 
-export default function LeagueCard({ id, league, onEdit, onRemove }) {
+export default function LeagueCard({ id, league, onEdit, onRemove, onOpen }) {
   const { data, loading, error, updatedAt, refresh } = useLeagueData(league);
   const [statView, setStatView] = useState('batting');
 
@@ -165,6 +165,13 @@ export default function LeagueCard({ id, league, onEdit, onRemove }) {
           </div>
         </>
       )}
+
+      <button
+        onClick={() => onOpen(id)}
+        className="mt-3 w-full rounded-md border border-blue-200 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-900/20"
+      >
+        Players & league data →
+      </button>
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useLeagues } from './hooks/useLeagues';
 import LeagueCard from './components/LeagueCard';
 import LeagueModal from './components/LeagueModal';
+import LeagueDetail from './components/LeagueDetail';
 
 function useDarkMode() {
   const [dark, setDark] = useState(() =>
@@ -19,6 +20,7 @@ export default function App() {
     useLeagues();
   const [dark, setDark] = useDarkMode();
   const [modal, setModal] = useState(null); // null | 'add' | leagueId
+  const [openLeagueId, setOpenLeagueId] = useState(null);
 
   const leagueEntries = Object.entries(leagues);
   const editingLeague = modal && modal !== 'add' ? leagues[modal] : null;
@@ -49,7 +51,7 @@ export default function App() {
               ⚾ OOTP League Dashboard
             </h1>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Live data from StatsPlus · refreshes every 10 minutes
+              Live data from StatsPlus · manual refresh
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -70,7 +72,21 @@ export default function App() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-6">
+      {openLeagueId && leagues[openLeagueId] && (
+        <LeagueDetail
+          key={openLeagueId}
+          league={leagues[openLeagueId]}
+          onBack={() => setOpenLeagueId(null)}
+        />
+      )}
+
+      {/* The dashboard stays mounted while a league is open so the cards
+          don't refetch when navigating back. */}
+      <main
+        className={`mx-auto max-w-6xl px-4 py-6 ${
+          openLeagueId && leagues[openLeagueId] ? 'hidden' : ''
+        }`}
+      >
         {error && (
           <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
             {error}
@@ -105,6 +121,7 @@ export default function App() {
               league={league}
               onEdit={setModal}
               onRemove={handleRemove}
+              onOpen={setOpenLeagueId}
             />
           ))}
         </div>

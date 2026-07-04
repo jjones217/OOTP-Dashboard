@@ -11,6 +11,12 @@ function statsplusDevProxy() {
     'teams',
     'teambatstats',
     'teampitchstats',
+    'players',
+    'batstats',
+    'pitchstats',
+    'standings',
+    'ratings',
+    'tradeblock',
   ]);
   const LGURL_RE = /^[a-zA-Z0-9_-]+$/;
 

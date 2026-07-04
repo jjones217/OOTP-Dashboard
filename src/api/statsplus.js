@@ -6,6 +6,30 @@
 const desktopBridge =
   typeof window !== 'undefined' ? window.statsplusDesktop : undefined;
 
+// Global request queue: every StatsPlus call across the app is spaced out
+// to avoid tripping the aggressive StatsPlus rate limiter with bursts.
+const REQUEST_GAP_MS = 350;
+let lastRequestAt = 0;
+let queueChain = Promise.resolve();
+
+function queued(fn) {
+  const run = async () => {
+    const wait = Math.max(0, lastRequestAt + REQUEST_GAP_MS - Date.now());
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    try {
+      return await fn();
+    } finally {
+      lastRequestAt = Date.now();
+    }
+  };
+  const p = queueChain.then(run, run);
+  queueChain = p.then(
+    () => {},
+    () => {}
+  );
+  return p;
+}
+
 async function request(league, endpoint) {
   if (desktopBridge) {
     const { ok, status, body } = await desktopBridge.fetch({
@@ -22,7 +46,7 @@ async function request(league, endpoint) {
 }
 
 export async function fetchEndpoint(league, endpoint) {
-  const { ok, status, text } = await request(league, endpoint);
+  const { ok, status, text } = await queued(() => request(league, endpoint));
 
   if (!ok) {
     let message = `Request failed (${status})`;
