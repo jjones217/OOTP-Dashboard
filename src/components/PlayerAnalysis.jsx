@@ -6,6 +6,7 @@ import {
   buildToolAxes,
   compositeScore,
   pickPlayerStats,
+  withPitchingRates,
   BAT_STAT_KEYS,
   PITCH_STAT_KEYS,
 } from '../lib/players';
@@ -149,7 +150,7 @@ export default function PlayerAnalysis({
         />
         <StatLine
           title={statsYear ? `Pitching stats (${statsYear})` : 'Pitching stats'}
-          row={player.pitch}
+          row={withPitchingRates(player.pitch)}
           keys={PITCH_STAT_KEYS}
         />
       </div>

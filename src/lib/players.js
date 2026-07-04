@@ -5,6 +5,8 @@
 // scales (20-80, 1-100, 1-250, stars…) are inferred from the league-wide
 // max of each column.
 
+import { filterSeasonTotals } from '../api/statsplus';
+
 const num = (v) => {
   if (v === null || v === undefined || v === '') return null;
   const n = Number(v);
@@ -17,15 +19,21 @@ function asRows(data) {
   return [];
 }
 
-// Find the first key of `row` that matches one of `patterns`. Keys
+// Find the first key of `row` that matches one of `patterns`, trying
+// patterns in priority order (not row-key order) — e.g. StatsPlus stat
+// rows have both a generic "id" (the stat record's own id) and
+// "player_id" columns, and ID_PATTERNS lists player_id first precisely
+// so it wins even though "id" often appears earlier in the row. Keys
 // containing "pot" are potential ratings; `mode` selects which side.
 function matchKey(row, patterns, mode = 'current') {
-  for (const key of Object.keys(row)) {
-    const k = key.toLowerCase();
-    const isPot = k.includes('pot');
-    if (mode === 'current' && isPot) continue;
-    if (mode === 'potential' && !isPot) continue;
-    if (patterns.some((re) => re.test(k))) return key;
+  for (const re of patterns) {
+    for (const key of Object.keys(row)) {
+      const k = key.toLowerCase();
+      const isPot = k.includes('pot');
+      if (mode === 'current' && isPot) continue;
+      if (mode === 'potential' && !isPot) continue;
+      if (re.test(k)) return key;
+    }
   }
   return null;
 }
@@ -41,10 +49,12 @@ const POSITION_CODES = {
   6: 'SS', 7: 'LF', 8: 'CF', 9: 'RF', 10: 'DH', 11: 'P',
 };
 
+// Same priority-order fix as matchKey above — see its comment.
 function firstMatchValue(row, patterns) {
-  for (const key of Object.keys(row)) {
-    const k = key.toLowerCase();
-    if (patterns.some((re) => re.test(k))) return row[key];
+  for (const re of patterns) {
+    for (const key of Object.keys(row)) {
+      if (re.test(key.toLowerCase())) return row[key];
+    }
   }
   return undefined;
 }
@@ -94,11 +104,14 @@ export function buildPlayerIndex({ players, batstats, pitchstats, ratings }) {
     const id = playerIdOf(row);
     if (id) ensure(id).info = row;
   }
-  for (const row of asRows(batstats)) {
+  // playerbatstatsv2/playerpitchstatsv2 return one row per player PER
+  // SPLIT (season total, vs LHP/RHP, home/away, ...) — keep only the
+  // "Total" split (split_id === 1), confirmed against real data.
+  for (const row of filterSeasonTotals(asRows(batstats))) {
     const id = playerIdOf(row);
     if (id) ensure(id).bat = row;
   }
-  for (const row of asRows(pitchstats)) {
+  for (const row of filterSeasonTotals(asRows(pitchstats))) {
     const id = playerIdOf(row);
     if (id) ensure(id).pitch = row;
   }
@@ -215,21 +228,53 @@ export function compositeScore(axes, key = 'value') {
   return Math.round(20 + (pct / 100) * 60);
 }
 
+// StatsPlus's real playerpitchstatsv2/teampitchstats columns (confirmed
+// from live data) don't include era/whip — compute them from
+// er/ip/bb/ha when they're missing, so the stat line still shows the
+// rate stats people actually look for.
+export function withPitchingRates(row) {
+  if (!row) return row;
+  const lower = {};
+  for (const k of Object.keys(row)) lower[k.toLowerCase()] = k;
+  const get = (name) => (lower[name] !== undefined ? Number(row[lower[name]]) : NaN);
+  const ip = get('ip');
+  if (!Number.isFinite(ip) || ip <= 0) return row;
+
+  const out = { ...row };
+  if (lower.era === undefined) {
+    const er = get('er');
+    if (Number.isFinite(er)) out.era = ((er * 9) / ip).toFixed(2);
+  }
+  if (lower.whip === undefined) {
+    const bb = get('bb');
+    const ha = get('ha');
+    if (Number.isFinite(bb) && Number.isFinite(ha)) {
+      out.whip = ((bb + ha) / ip).toFixed(2);
+    }
+  }
+  return out;
+}
+
+// A couple of raw column names read confusingly as a bare uppercase
+// label (e.g. StatsPlus uses "s" for saves, not "sv").
+const STAT_LABEL_OVERRIDES = { s: 'SV' };
+
 // Numeric stat picking for the player stat line (reuses the tolerant
 // approach from the team cards).
 export function pickPlayerStats(row, preferredKeys) {
   if (!row) return [];
   const lower = {};
   for (const [k, v] of Object.entries(row)) lower[k.toLowerCase()] = v;
+  const label = (k) => STAT_LABEL_OVERRIDES[k] || k.toUpperCase();
   const picked = preferredKeys
     .filter((k) => lower[k] !== undefined && lower[k] !== '')
-    .map((k) => [k.toUpperCase(), lower[k]]);
+    .map((k) => [label(k), lower[k]]);
   if (picked.length > 0) return picked;
   return Object.entries(row)
     .filter(([, v]) => v !== '' && !Number.isNaN(Number(v)))
     .slice(0, 10)
-    .map(([k, v]) => [k.toUpperCase(), v]);
+    .map(([k, v]) => [label(k.toLowerCase()), v]);
 }
 
 export const BAT_STAT_KEYS = ['g', 'ab', 'r', 'h', 'hr', 'rbi', 'sb', 'avg', 'obp', 'slg', 'ops'];
-export const PITCH_STAT_KEYS = ['g', 'gs', 'w', 'l', 'sv', 'ip', 'k', 'bb', 'era', 'whip'];
+export const PITCH_STAT_KEYS = ['g', 'gs', 'w', 'l', 's', 'ip', 'ha', 'er', 'bb', 'k', 'era', 'whip'];

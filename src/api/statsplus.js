@@ -170,8 +170,26 @@ export function extractYear(data) {
   return m ? Number(m[0]) : null;
 }
 
+// StatsPlus's split-based stat endpoints (playerbatstatsv2,
+// playerpitchstatsv2, and likely teambatstats/teampitchstats) return one
+// row per player/team PER SPLIT (season total, vs LHP/RHP, home/away,
+// monthly, ...), not one row per season. split_id === 1 is the "Total"
+// split — confirmed from real data where two sub-split rows' IP/AB summed
+// exactly to the split_id=1 row's IP/AB. Endpoints with no split_id
+// column (e.g. plain /teams) are returned unfiltered.
+function isTotalSplitRow(row) {
+  const key = Object.keys(row).find((k) => k.toLowerCase() === 'split_id');
+  if (!key) return true;
+  return String(row[key]) === '1';
+}
+
+export function filterSeasonTotals(rows) {
+  const totals = rows.filter(isTotalSplitRow);
+  return totals.length > 0 ? totals : rows;
+}
+
 export function findTeamRow(data, teamId) {
-  const rows = asRows(data);
+  const rows = filterSeasonTotals(asRows(data));
   const wanted = String(teamId);
   return rows.find((row) => {
     const id = firstField(row, ['team_id', 'teamid', 'id', 'ID', 'TeamID', 'tid']);

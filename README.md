@@ -70,6 +70,15 @@ Two things are special:
   (`playerbatstatsv2:2052`, etc.), so multiple years can be pulled or
   imported without one overwriting another. The Players tab has a season
   dropdown once more than one year is cached.
+- **These endpoints (and likely teambatstats/teampitchstats) return one
+  row per player/team PER SPLIT** (season total, vs LHP/RHP, home/away,
+  ...), confirmed from real data — `split_id === 1` is the season
+  "Total" split. The app filters to that split everywhere automatically
+  (`filterSeasonTotals` in `src/api/statsplus.js`); endpoints without a
+  `split_id` column pass through unfiltered.
+- Real `playerpitchstatsv2` columns don't include `era`/`whip` — they're
+  computed from `er`/`ip`/`bb`/`ha` (`withPitchingRates` in
+  `src/lib/players.js`) whenever the raw columns aren't present.
 
 Rate-limited? Every card and the league detail view have a **📋 Import
 manually** button: open the endpoint URL yourself (a plain browser

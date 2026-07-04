@@ -1,7 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLeagueDetail } from '../hooks/useLeagueDetail';
-import { findTeamRow, extractTeamName, extractRecord, extractYear } from '../api/statsplus';
-import { buildPlayerIndex, pickPlayerStats, BAT_STAT_KEYS, PITCH_STAT_KEYS } from '../lib/players';
+import {
+  findTeamRow,
+  extractTeamName,
+  extractRecord,
+  extractYear,
+  filterSeasonTotals,
+} from '../api/statsplus';
+import {
+  buildPlayerIndex,
+  pickPlayerStats,
+  withPitchingRates,
+  BAT_STAT_KEYS,
+  PITCH_STAT_KEYS,
+} from '../lib/players';
 import { statKey, collectYears } from '../lib/statYears';
 import PlayerAnalysis from './PlayerAnalysis';
 import ImportDataModal from './ImportDataModal';
@@ -56,7 +68,7 @@ function asRows(data) {
 
 function teamNameById(teamsData) {
   const names = {};
-  for (const row of asRows(teamsData)) {
+  for (const row of filterSeasonTotals(asRows(teamsData))) {
     const id =
       row.team_id ?? row.teamid ?? row.id ?? row.ID ?? row.TeamID ?? row.tid;
     if (id === undefined) continue;
@@ -73,10 +85,9 @@ function numeric(v) {
 
 // --- Standings: derived from /teams W-L (StatsPlus has no standings API) ---
 function buildStandings(teamsData) {
-  const source = teamsData;
   const names = teamNameById(teamsData);
   const rows = [];
-  for (const row of asRows(source)) {
+  for (const row of filterSeasonTotals(asRows(teamsData))) {
     const id =
       row.team_id ?? row.teamid ?? row.id ?? row.ID ?? row.TeamID ?? row.tid;
     const w = numeric(row.w ?? row.W ?? row.wins ?? row.Wins);
@@ -171,8 +182,10 @@ function StandingsTables({ groups, myTeamId }) {
   );
 }
 
-function TeamStatsTable({ title, data, names, keys, myTeamId }) {
-  const rows = asRows(data);
+function TeamStatsTable({ title, data, names, keys, myTeamId, transformRow }) {
+  const rows = filterSeasonTotals(asRows(data)).map((r) =>
+    transformRow ? transformRow(r) : r
+  );
   if (rows.length === 0) return null;
   const columns = pickPlayerStats(rows[0], keys).map(([label]) => label);
   return (
@@ -562,6 +575,7 @@ export default function LeagueDetail({ id, league, onBack }) {
           <TeamStatsTable
             title="Team pitching"
             data={data.teampitchstats}
+            transformRow={withPitchingRates}
             names={names}
             keys={PITCH_STAT_KEYS}
             myTeamId={league.teamId}

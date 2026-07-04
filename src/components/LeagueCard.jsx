@@ -1,6 +1,12 @@
 import { useState } from 'react';
 import { useLeagueData } from '../hooks/useLeagueData';
 import ImportDataModal from './ImportDataModal';
+import {
+  pickPlayerStats,
+  withPitchingRates,
+  BAT_STAT_KEYS,
+  PITCH_STAT_KEYS,
+} from '../lib/players';
 
 function overviewImportEndpoints(league) {
   const base = `https://statsplus.net/${league.lgurl}/api`;
@@ -25,25 +31,6 @@ const STAT_LABELS = {
   batting: 'Batting',
   pitching: 'Pitching',
 };
-
-// Stats worth showing if present, in display order.
-const BATTING_KEYS = ['g', 'ab', 'r', 'h', 'hr', 'rbi', 'sb', 'avg', 'obp', 'slg', 'ops'];
-const PITCHING_KEYS = ['g', 'w', 'l', 'sv', 'ip', 'ha', 'er', 'bb', 'k', 'era', 'whip'];
-
-function pickStats(row, preferredKeys) {
-  if (!row) return [];
-  const lower = {};
-  for (const [k, v] of Object.entries(row)) lower[k.toLowerCase()] = v;
-  const picked = preferredKeys
-    .filter((k) => lower[k] !== undefined)
-    .map((k) => [k.toUpperCase(), lower[k]]);
-  if (picked.length > 0) return picked;
-  // Fallback: show whatever numeric-looking fields exist.
-  return Object.entries(row)
-    .filter(([, v]) => v !== '' && !Number.isNaN(Number(v)))
-    .slice(0, 12)
-    .map(([k, v]) => [k.toUpperCase(), v]);
-}
 
 function ExportBadge({ exportStatus }) {
   if (!exportStatus) {
@@ -77,8 +64,12 @@ export default function LeagueCard({ id, league, onEdit, onRemove, onOpen }) {
   const [statView, setStatView] = useState('batting');
   const [showImport, setShowImport] = useState(false);
 
-  const statRow = data?.[statView];
-  const stats = pickStats(statRow, statView === 'batting' ? BATTING_KEYS : PITCHING_KEYS);
+  const statRow =
+    statView === 'pitching' ? withPitchingRates(data?.pitching) : data?.batting;
+  const stats = pickPlayerStats(
+    statRow,
+    statView === 'batting' ? BAT_STAT_KEYS : PITCH_STAT_KEYS
+  );
 
   return (
     <div className="flex flex-col rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
