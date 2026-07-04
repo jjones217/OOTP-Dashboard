@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   fetchEndpoint,
+  parseResponseText,
   extractSimDate,
   findTeamRow,
   extractRecord,
@@ -81,5 +82,27 @@ export function useLeagueData(id, league) {
     }
   }, [id, league?.lgurl, league?.teamId]);
 
-  return { data, hasCache, loading, error, pulledAt, pull };
+  // Manual import: for when the pull queue is rate-limited. The user
+  // opens the endpoint URL in their own browser, copies the response,
+  // and pastes it here — it's parsed and cached exactly like a pull.
+  const importEndpoint = useCallback(
+    async (endpoint, rawText) => {
+      const parsed = parseResponseText(rawText);
+      await saveCached(id, endpoint, parsed);
+      const cached = await loadAllCached(id);
+      const raw = {};
+      let latest = null;
+      for (const [ep, entry] of Object.entries(cached)) {
+        raw[ep] = entry.data;
+        if (!latest || entry.fetchedAt > latest) latest = entry.fetchedAt;
+      }
+      setData(deriveOverview(raw, league.teamId));
+      setPulledAt(latest ? new Date(latest) : null);
+      setHasCache(true);
+      return Array.isArray(parsed) ? parsed.length : null;
+    },
+    [id, league?.teamId]
+  );
+
+  return { data, hasCache, loading, error, pulledAt, pull, importEndpoint };
 }

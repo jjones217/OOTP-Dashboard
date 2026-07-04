@@ -1,8 +1,40 @@
 import { useMemo, useState } from 'react';
 import { useLeagueDetail } from '../hooks/useLeagueDetail';
-import { findTeamRow, extractTeamName, extractRecord } from '../api/statsplus';
+import { findTeamRow, extractTeamName, extractRecord, extractYear } from '../api/statsplus';
 import { buildPlayerIndex, pickPlayerStats, BAT_STAT_KEYS, PITCH_STAT_KEYS } from '../lib/players';
 import PlayerAnalysis from './PlayerAnalysis';
+import ImportDataModal from './ImportDataModal';
+
+function detailImportEndpoints(league, seasonYear) {
+  const base = `https://statsplus.net/${league.lgurl}/api`;
+  const year = seasonYear || '<season year>';
+  return [
+    { value: 'date', label: 'Sim date (date)', url: `${base}/date/` },
+    { value: 'teams', label: 'Teams (teams)', url: `${base}/teams/` },
+    { value: 'players', label: 'Players (players)', url: `${base}/players/` },
+    { value: 'teambatstats', label: 'Team batting (teambatstats)', url: `${base}/teambatstats/` },
+    { value: 'teampitchstats', label: 'Team pitching (teampitchstats)', url: `${base}/teampitchstats/` },
+    {
+      value: 'playerbatstatsv2',
+      label: 'Player batting (playerbatstatsv2)',
+      url: `${base}/playerbatstatsv2/?year=${year}`,
+    },
+    {
+      value: 'playerpitchstatsv2',
+      label: 'Player pitching (playerpitchstatsv2)',
+      url: `${base}/playerpitchstatsv2/?year=${year}`,
+    },
+    {
+      value: 'ratings',
+      label: 'Ratings (ratings)',
+      url: `${base}/ratings/`,
+      hint:
+        'Ratings is an async job on StatsPlus\'s side — visit this URL, ' +
+        'wait ~60-90 seconds, reload, and paste the CSV it shows then (not ' +
+        'the "in progress" message).',
+    },
+  ];
+}
 
 function asRows(data) {
   if (Array.isArray(data)) return data;
@@ -188,6 +220,7 @@ export default function LeagueDetail({ id, league, onBack }) {
     ratingsError,
     ratingsPulledAt,
     pullRatings,
+    importEndpoint,
   } = useLeagueDetail(id, league);
   const hasCache = Object.keys(data).length > 0;
   const [tab, setTab] = useState('players');
@@ -195,6 +228,7 @@ export default function LeagueDetail({ id, league, onBack }) {
   const [teamFilter, setTeamFilter] = useState(String(league.teamId ?? 'all'));
   const [roleFilter, setRoleFilter] = useState('all');
   const [selectedId, setSelectedId] = useState(null);
+  const [showImport, setShowImport] = useState(false);
 
   const names = useMemo(() => teamNameById(data.teams), [data.teams]);
   const players = useMemo(
@@ -209,6 +243,7 @@ export default function LeagueDetail({ id, league, onBack }) {
   );
   const allRatingRows = useMemo(() => asRows(ratings), [ratings]);
   const standings = useMemo(() => buildStandings(data.teams), [data.teams]);
+  const seasonYear = useMemo(() => extractYear(data.date), [data.date]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -249,6 +284,13 @@ export default function LeagueDetail({ id, league, onBack }) {
               Last pulled {pulledAt.toLocaleTimeString()}
             </span>
           )}
+          <button
+            onClick={() => setShowImport(true)}
+            title="Paste a response you fetched yourself (useful if rate-limited)"
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+          >
+            📋 Import manually
+          </button>
           <button
             onClick={pull}
             disabled={loading}
@@ -464,6 +506,14 @@ export default function LeagueDetail({ id, league, onBack }) {
         </div>
       )}
       </>
+      )}
+
+      {showImport && (
+        <ImportDataModal
+          endpoints={detailImportEndpoints(league, seasonYear)}
+          onImport={importEndpoint}
+          onClose={() => setShowImport(false)}
+        />
       )}
     </div>
   );

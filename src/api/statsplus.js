@@ -49,6 +49,18 @@ async function request(league, endpoint, extraParams = {}) {
   return { ok: res.ok, status: res.status, text: await res.text() };
 }
 
+// StatsPlus responses are JSON for most endpoints, CSV for others (see
+// https://wiki.statsplus.net/web-tools/statsplus-api). Try JSON first,
+// fall back to CSV — used both for live fetches and for manually pasted
+// responses (see src/lib/dataStore.js manual import).
+export function parseResponseText(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return parseCsv(text);
+  }
+}
+
 export async function fetchEndpoint(league, endpoint, extraParams = {}) {
   const { ok, status, text } = await queued(() =>
     request(league, endpoint, extraParams)
@@ -67,11 +79,7 @@ export async function fetchEndpoint(league, endpoint, extraParams = {}) {
     throw err;
   }
 
-  try {
-    return JSON.parse(text);
-  } catch {
-    return parseCsv(text);
-  }
+  return parseResponseText(text);
 }
 
 // CSV parser for StatsPlus CSV endpoints. Handles quoted fields (player

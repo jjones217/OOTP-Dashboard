@@ -1,5 +1,17 @@
 import { useState } from 'react';
 import { useLeagueData } from '../hooks/useLeagueData';
+import ImportDataModal from './ImportDataModal';
+
+function overviewImportEndpoints(league) {
+  const base = `https://statsplus.net/${league.lgurl}/api`;
+  return [
+    { value: 'date', label: 'Sim date (date)', url: `${base}/date/` },
+    { value: 'exports', label: 'Exports (exports)', url: `${base}/exports/` },
+    { value: 'teams', label: 'Teams (teams)', url: `${base}/teams/` },
+    { value: 'teambatstats', label: 'Team batting (teambatstats)', url: `${base}/teambatstats/` },
+    { value: 'teampitchstats', label: 'Team pitching (teampitchstats)', url: `${base}/teampitchstats/` },
+  ];
+}
 
 const STAT_LABELS = {
   batting: 'Batting',
@@ -52,8 +64,10 @@ function ExportBadge({ exportStatus }) {
 }
 
 export default function LeagueCard({ id, league, onEdit, onRemove, onOpen }) {
-  const { data, hasCache, loading, error, pulledAt, pull } = useLeagueData(id, league);
+  const { data, hasCache, loading, error, pulledAt, pull, importEndpoint } =
+    useLeagueData(id, league);
   const [statView, setStatView] = useState('batting');
+  const [showImport, setShowImport] = useState(false);
 
   const statRow = data?.[statView];
   const stats = pickStats(statRow, statView === 'batting' ? BATTING_KEYS : PITCHING_KEYS);
@@ -80,6 +94,13 @@ export default function LeagueCard({ id, league, onEdit, onRemove, onOpen }) {
             {loading ? '⏳' : '⬇'}
           </button>
           <button
+            onClick={() => setShowImport(true)}
+            title="Import data manually (paste a response you fetched yourself)"
+            className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+          >
+            📋
+          </button>
+          <button
             onClick={() => onEdit(id)}
             title="Edit league"
             className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
@@ -99,6 +120,15 @@ export default function LeagueCard({ id, league, onEdit, onRemove, onOpen }) {
       {error && (
         <div className="mb-2 rounded-lg bg-red-50 p-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
           {error}
+          {/rate limit/i.test(error) && (
+            <>
+              {' '}
+              <button onClick={() => setShowImport(true)} className="font-semibold underline">
+                Import manually
+              </button>{' '}
+              instead.
+            </>
+          )}
         </div>
       )}
 
@@ -187,6 +217,14 @@ export default function LeagueCard({ id, league, onEdit, onRemove, onOpen }) {
       >
         Players & league data →
       </button>
+
+      {showImport && (
+        <ImportDataModal
+          endpoints={overviewImportEndpoints(league)}
+          onImport={importEndpoint}
+          onClose={() => setShowImport(false)}
+        />
+      )}
     </div>
   );
 }

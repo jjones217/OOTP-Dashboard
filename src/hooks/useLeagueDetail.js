@@ -1,5 +1,10 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { fetchEndpoint, extractYear, parseCsv } from '../api/statsplus';
+import {
+  fetchEndpoint,
+  extractYear,
+  parseCsv,
+  parseResponseText,
+} from '../api/statsplus';
 import { loadAllCached, saveCached } from '../lib/dataStore';
 
 // Endpoints per https://wiki.statsplus.net/web-tools/statsplus-api.
@@ -138,6 +143,44 @@ export function useLeagueDetail(id, league) {
     }
   }, [id, league?.lgurl]);
 
+  // Manual import: for when the pull queue is rate-limited. The user
+  // opens the endpoint URL in their own browser, copies the response,
+  // and pastes it here — it's parsed and cached exactly like a pull.
+  const importEndpoint = useCallback(
+    async (endpoint, rawText) => {
+      if (endpoint === 'ratings' && /still in progress|^Request received/i.test(rawText.trim())) {
+        throw new Error(
+          'This looks like the "job in progress" placeholder, not the final ' +
+            'CSV. Reload the ratings URL after ~60-90 seconds and paste what ' +
+            'it shows then.'
+        );
+      }
+      const parsed = parseResponseText(rawText);
+
+      if (endpoint === 'ratings') {
+        await saveCached(id, 'ratings', parsed);
+        setRatings(parsed);
+        setRatingsStatus('done');
+        setRatingsPulledAt(new Date());
+        return Array.isArray(parsed) ? parsed.length : null;
+      }
+
+      await saveCached(id, endpoint, parsed);
+      const cached = await loadAllCached(id);
+      const raw = {};
+      let latest = null;
+      for (const [ep, entry] of Object.entries(cached)) {
+        if (ep === 'ratings') continue;
+        raw[ep] = entry.data;
+        if (!latest || entry.fetchedAt > latest) latest = entry.fetchedAt;
+      }
+      setData(raw);
+      setPulledAt(latest ? new Date(latest) : null);
+      return Array.isArray(parsed) ? parsed.length : null;
+    },
+    [id]
+  );
+
   return {
     data,
     errors,
@@ -149,5 +192,6 @@ export function useLeagueDetail(id, league) {
     ratingsError,
     ratingsPulledAt,
     pullRatings,
+    importEndpoint,
   };
 }
