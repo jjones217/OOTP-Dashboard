@@ -3,6 +3,7 @@ import { useLeagues } from './hooks/useLeagues';
 import LeagueCard from './components/LeagueCard';
 import LeagueModal from './components/LeagueModal';
 import LeagueDetail from './components/LeagueDetail';
+import { formatBuildLabel } from './buildInfo';
 
 function useDarkMode() {
   const [dark, setDark] = useState(() =>
@@ -52,6 +53,9 @@ export default function App() {
             </h1>
             <p className="text-xs text-gray-500 dark:text-gray-400">
               Data pulled from StatsPlus on request, cached on this computer
+              <span className="ml-2 text-gray-400 dark:text-gray-500">
+                · {formatBuildLabel()}
+              </span>
             </p>
           </div>
           <div className="flex items-center gap-2">

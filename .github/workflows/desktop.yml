@@ -23,8 +23,27 @@ jobs:
 
       - run: npm ci
 
+      - name: Set build version
+        id: buildver
+        shell: bash
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          VERSION="0.1.${{ github.run_number }}"
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = process.argv[1];
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          " "$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+
       - name: Build web assets
         run: npm run build
+        env:
+          VITE_BUILD_VERSION: ${{ steps.buildver.outputs.version }}
+          VITE_BUILD_NUMBER: ${{ github.run_number }}
+          VITE_BUILD_COMMIT: ${{ steps.buildver.outputs.sha }}
 
       - name: Build installers
         # On a v* tag this also attaches the installers to a GitHub Release;

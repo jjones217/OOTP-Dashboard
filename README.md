@@ -98,6 +98,18 @@ The macOS build is unsigned (no Apple Developer account needed): the first
 time, right-click the app → **Open** → Open, or run
 `xattr -cr "/Applications/OOTP Dashboard.app"`.
 
+**Build number**: every CI build stamps the app with a version of
+`0.1.<GitHub Actions run number>` plus the short commit it built from —
+shown in the app header (e.g. "v0.1.42 · a1b2c3d") and baked into the
+installer's filename, so you can always tell which build is installed.
+Local `npm run desktop`/`desktop:pack` builds show "dev build" instead,
+since that stamping only happens in CI.
+
+**Upgrades replace, not stack**: the installer's app ID stays constant
+across builds, so running a newer installer over an existing install
+replaces it in place — no duplicate Start Menu entries or side-by-side
+versions.
+
 Local development / packaging:
 
 ```sh
