@@ -583,6 +583,7 @@ export default function LeagueDetail({ id, league, onBack }) {
           endpoints={detailImportEndpoints(league, selectedYear || seasonYear)}
           onImport={importEndpoint}
           onClose={() => setShowImport(false)}
+          league={league}
         />
       )}
     </div>

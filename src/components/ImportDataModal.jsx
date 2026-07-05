@@ -1,36 +1,29 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 // Manual data import: for when the pull queue hits StatsPlus's rate
 // limiter. The user opens an endpoint URL directly in their own browser
 // (a fresh browser request isn't subject to this app's queue), copies the
 // response body, and pastes it here. It's parsed and cached exactly like
 // a normal pull, so every view in the app picks it up the same way.
-export default function ImportDataModal({ endpoints, onImport, onClose }) {
-  const shellRunner =
-    typeof window !== 'undefined' ? window.shellRunner : undefined;
-  const defaultShell = shellRunner?.platform === 'win32' ? 'powershell' : 'bash';
+//
+// On desktop there's also a "Fetch directly" option: it calls the same
+// allowlisted, validated StatsPlus bridge the rest of the app uses
+// (window.statsplusDesktop.fetch — endpoint allowlist + lgurl regex,
+// enforced in electron/main.cjs), just without going through this app's
+// own client-side request queue/cooldown. That's deliberately NOT a
+// free-form command runner — it can only ever hit the same handful of
+// StatsPlus GET endpoints every other pull in the app already uses.
+export default function ImportDataModal({ endpoints, onImport, onClose, league }) {
+  const desktopFetch =
+    typeof window !== 'undefined' ? window.statsplusDesktop?.fetch : undefined;
   const [endpoint, setEndpoint] = useState(endpoints[0].value);
   const [text, setText] = useState('');
   const [year, setYear] = useState(endpoints[0].defaultYear ?? '');
-  const [shellName, setShellName] = useState(defaultShell);
-  const [command, setCommand] = useState('');
   const [status, setStatus] = useState(null); // null | 'saving' | 'done' | 'error'
   const [message, setMessage] = useState('');
 
   const selected = endpoints.find((e) => e.value === endpoint);
   const url = selected?.urlFor ? selected.urlFor(selected.needsYear ? year : undefined) : null;
-
-  const commandFor = (shell, requestUrl) => {
-    if (!requestUrl || requestUrl.includes('<')) return '';
-    if (shell === 'powershell') {
-      return `Invoke-WebRequest -UseBasicParsing "${requestUrl}" | Select-Object -ExpandProperty Content`;
-    }
-    return `curl -L "${requestUrl}"`;
-  };
-
-  useEffect(() => {
-    setCommand(commandFor(shellName, url));
-  }, [shellName, url]);
 
   const handleEndpointChange = (value) => {
     setEndpoint(value);
@@ -65,31 +58,35 @@ export default function ImportDataModal({ endpoints, onImport, onClose }) {
     }
   };
 
-  const handleRunCommand = async (saveAfterRun = false) => {
-    if (!shellRunner?.run) return;
+  const handleFetchNow = async (saveAfterRun = false) => {
+    if (!desktopFetch || !league) return;
     setStatus('saving');
     setMessage('');
     try {
-      const result = await shellRunner.run({ shellName, command });
+      const params = selected.needsYear ? { year: Number(year) } : undefined;
+      const result = await desktopFetch({ lgurl: league.lgurl, endpoint, params });
       if (!result.ok) {
-        throw new Error(result.error || 'Command failed.');
+        let msg = `Request failed (${result.status})`;
+        try {
+          const body = JSON.parse(result.body);
+          if (body.error) msg = body.error;
+        } catch {
+          /* keep default */
+        }
+        throw new Error(msg);
       }
-      const output = String(result.stdout || '');
-      if (!output.trim()) {
-        throw new Error('Command completed but returned no stdout.');
-      }
-      setText(output);
+      setText(result.body);
       if (saveAfterRun) {
         const count = await onImport(
           endpoint,
-          output,
+          result.body,
           selected.needsYear ? Number(year) : undefined
         );
         setStatus('done');
         setMessage(typeof count === 'number' ? `Saved — ${count} rows.` : 'Saved.');
       } else {
         setStatus('done');
-        setMessage('Command output loaded. Review it, then save to cache.');
+        setMessage('Fetched. Review it below, then save to cache.');
       }
     } catch (err) {
       setStatus('error');
@@ -169,52 +166,30 @@ export default function ImportDataModal({ endpoints, onImport, onClose }) {
           </p>
         )}
 
-        {shellRunner?.run && (
+        {desktopFetch && league && endpoint !== 'ratings' && (
           <div className="mb-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
-            <div className="mb-2 flex flex-wrap items-center gap-2">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                Run command
-              </label>
-              <select
-                value={shellName}
-                onChange={(e) => {
-                  setShellName(e.target.value);
-                  setStatus(null);
-                }}
-                className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-              >
-                <option value="powershell">PowerShell</option>
-                <option value="bash">Bash</option>
-              </select>
-            </div>
-            <textarea
-              value={command}
-              onChange={(e) => {
-                setCommand(e.target.value);
-                setStatus(null);
-              }}
-              rows={3}
-              placeholder={
-                shellName === 'powershell'
-                  ? 'Invoke-WebRequest "https://statsplus.net/league/api/date/" | Select-Object -ExpandProperty Content'
-                  : 'curl -L "https://statsplus.net/league/api/date/"'
-              }
-              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 font-mono text-xs text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-            />
-            <div className="mt-2 flex flex-wrap justify-end gap-2">
+            <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">
+              <span className="font-medium text-gray-700 dark:text-gray-300">
+                Fetch directly
+              </span>{' '}
+              — makes this one request right now, skipping this app's own
+              cooldown (not StatsPlus's rate limit — if that's still active
+              this will fail too).
+            </p>
+            <div className="flex flex-wrap justify-end gap-2">
               <button
-                onClick={() => void handleRunCommand(false)}
-                disabled={!command.trim() || status === 'saving' || yearInvalid}
+                onClick={() => void handleFetchNow(false)}
+                disabled={status === 'saving' || yearInvalid}
                 className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
               >
-                Run and preview
+                Fetch and preview
               </button>
               <button
-                onClick={() => void handleRunCommand(true)}
-                disabled={!command.trim() || status === 'saving' || yearInvalid}
+                onClick={() => void handleFetchNow(true)}
+                disabled={status === 'saving' || yearInvalid}
                 className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
               >
-                Run and save
+                Fetch and save
               </button>
             </div>
           </div>

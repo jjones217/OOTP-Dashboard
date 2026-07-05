@@ -225,6 +225,7 @@ export default function LeagueCard({ id, league, onEdit, onRemove, onOpen }) {
           endpoints={overviewImportEndpoints(league)}
           onImport={importEndpoint}
           onClose={() => setShowImport(false)}
+          league={league}
         />
       )}
     </div>
